@@ -1,0 +1,266 @@
+// Modelo de dados do Amor em Página.
+// Valores monetários sempre em centavos (Int). Datas em UTC; exibição em America/Sao_Paulo.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PageStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PUBLISHED
+  UNPUBLISHED
+  DELETED
+}
+
+enum OrderStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  REFUNDED
+  CHARGED_BACK
+}
+
+enum PaymentMethod {
+  PIX
+  CARD
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+}
+
+enum AssetStatus {
+  PENDING
+  READY
+}
+
+enum PageEventType {
+  OPENED
+  UNLOCK_FAILED
+  PROPOSAL_ANSWER
+  COUPON_REDEEMED
+  GUESTBOOK
+  REPORT
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Customer {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+  pages     Page[]
+  orders    Order[]
+}
+
+model Page {
+  id                 String        @id @default(cuid())
+  status             PageStatus    @default(DRAFT)
+  /// Conteúdo versionado (ver src/lib/content/schema.ts — campo schemaVersion).
+  content            Json
+  /// Design tokens do tema (ver src/lib/theme/schema.ts).
+  theme              Json
+  /// Hashes bcrypt das respostas aceitas pela tela de entrada (nunca texto puro).
+  gateHashes         String[]      @default([])
+  slug               String?       @unique
+  customSlug         Boolean       @default(false)
+  draftTokenHash     String
+  editTokenHash      String?
+  editTokenExpiresAt DateTime?
+  customerId         String?
+  customer           Customer?     @relation(fields: [customerId], references: [id])
+  planId             String?
+  plan               Plan?         @relation(fields: [planId], references: [id])
+  aiGenerations      Int           @default(0)
+  publishedAt        DateTime?
+  expiresAt          DateTime?
+  firstOpenedAt      DateTime?
+  unpublishedReason  String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  assets             Asset[]
+  orders             Order[]
+  events             PageEvent[]
+  history            PageHistory[]
+
+  @@index([status, updatedAt])
+  @@index([customerId])
+}
+
+/// Histórico de mudanças de status (auditoria).
+model PageHistory {
+  id        String      @id @default(cuid())
+  pageId    String
+  page      Page        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  from      PageStatus?
+  to        PageStatus
+  reason    String
+  createdAt DateTime    @default(now())
+
+  @@index([pageId])
+}
+
+model Asset {
+  id        String      @id @default(cuid())
+  pageId    String
+  page      Page        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  key       String      @unique
+  url       String
+  mime      String
+  size      Int
+  width     Int?
+  height    Int?
+  status    AssetStatus @default(PENDING)
+  createdAt DateTime    @default(now())
+
+  @@index([pageId])
+}
+
+model Plan {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String
+  priceCents  Int
+  /// Limites e recursos: ver src/lib/plans.ts (PlanLimitsSchema).
+  limits      Json
+  active      Boolean  @default(true)
+  highlight   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  pages       Page[]
+  orders      Order[]
+}
+
+model Coupon {
+  id         String     @id @default(cuid())
+  code       String     @unique
+  type       CouponType
+  /// PERCENT: 1–100; FIXED: centavos.
+  value      Int
+  validFrom  DateTime?
+  validUntil DateTime?
+  maxUses    Int?
+  uses       Int        @default(0)
+  active     Boolean    @default(true)
+  createdAt  DateTime   @default(now())
+  orders     Order[]
+}
+
+model Template {
+  id          String   @id
+  name        String
+  description String
+  theme       Json
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Order {
+  id             String        @id @default(cuid())
+  pageId         String
+  page           Page          @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  planId         String
+  plan           Plan          @relation(fields: [planId], references: [id])
+  couponId       String?
+  coupon         Coupon?       @relation(fields: [couponId], references: [id])
+  method         PaymentMethod
+  status         OrderStatus   @default(PENDING)
+  statusDetail   String?
+  originalCents  Int
+  discountCents  Int           @default(0)
+  amountCents    Int
+  installments   Int           @default(1)
+  /// Endereço personalizado pedido no checkout (Premium); aplicado na aprovação.
+  requestedSlug  String?
+  idempotencyKey String        @unique
+  mpPaymentId    String?       @unique
+  pixQrCode      String?
+  pixQrBase64    String?
+  pixExpiresAt   DateTime?
+  paidAt         DateTime?
+  lastCheckedAt  DateTime?
+  emailSentAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([status, createdAt])
+  @@index([pageId])
+}
+
+/// Log de webhooks recebidos (para auditoria e idempotência).
+model PaymentEvent {
+  id             String    @id @default(cuid())
+  provider       String    @default("mercadopago")
+  requestId      String?
+  topic          String?
+  action         String?
+  dataId         String?
+  signatureValid Boolean
+  payload        Json
+  processedAt    DateTime?
+  result         String?
+  error          String?
+  createdAt      DateTime  @default(now())
+
+  @@unique([provider, requestId, dataId])
+  @@index([createdAt])
+}
+
+model PageEvent {
+  id        String        @id @default(cuid())
+  pageId    String
+  page      Page          @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type      PageEventType
+  data      Json          @default("{}")
+  ipHash    String?
+  createdAt DateTime      @default(now())
+
+  @@index([pageId, type])
+}
+
+model EmailLog {
+  id         String      @id @default(cuid())
+  to         String
+  template   String
+  subject    String
+  /// Props usadas para renderizar (permite reenvio/retentativa).
+  props      Json
+  status     EmailStatus @default(PENDING)
+  attempts   Int         @default(0)
+  providerId String?
+  error      String?
+  pageId     String?
+  orderId    String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([status, updatedAt])
+  @@index([to])
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}

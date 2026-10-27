@@ -1,0 +1,130 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Tokens do site (landing + builder). A página romântica usa as variáveis --c-* do tema. */
+@theme {
+  --font-display: var(--font-fraunces), "Georgia", serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-hand: var(--font-caveat), cursive;
+
+  --color-ink: #2a1418;
+  --color-ink-soft: #6b4c52;
+  --color-paper: #fbf6f1;
+  --color-cream: #f4ebe1;
+  --color-blush: #f6d9d5;
+  --color-rose: #c2264f;
+  --color-rose-deep: #8f1435;
+  --color-gold: #c79a4b;
+  --color-line: #e7d9cf;
+
+  --color-background: var(--color-paper);
+  --color-foreground: var(--color-ink);
+  --color-muted: #f1e7de;
+  --color-muted-foreground: var(--color-ink-soft);
+  --color-primary: var(--color-rose);
+  --color-primary-foreground: #fff;
+  --color-border: var(--color-line);
+  --color-input: var(--color-line);
+  --color-ring: var(--color-rose);
+  --color-destructive: #b42318;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0) rotate(var(--r, 0deg)); }
+  50% { transform: translateY(-10px) rotate(var(--r, 0deg)); }
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+html { -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-rose);
+  outline-offset: 2px;
+}
+
+/* Textura de papel sutil para o site */
+.paper-grain {
+  background-image: radial-gradient(rgba(42, 20, 24, 0.035) 1px, transparent 1px);
+  background-size: 3px 3px;
+}
+
+/* ───────────── Página romântica (renderer compartilhado) ───────────── */
+.love-page {
+  font-family: var(--font-body);
+  font-size: var(--base-size);
+  font-weight: var(--body-weight);
+  color: var(--c-text);
+  container-type: inline-size;
+  container-name: page;
+}
+.love-page h1, .love-page h2, .love-page h3 { font-family: var(--font-heading); line-height: 1.15; }
+.love-page .font-script { font-family: var(--font-script); }
+.love-card {
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  background: var(--c-surface);
+  border: 1px solid transparent;
+}
+.love-page[data-card="glass"] .love-card {
+  background: color-mix(in srgb, var(--c-surface) 55%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-color: color-mix(in srgb, var(--c-text) 10%, transparent);
+}
+.love-page[data-card="paper"] .love-card {
+  background: var(--c-surface);
+  background-image: radial-gradient(rgba(0,0,0,0.03) 1px, transparent 1px);
+  background-size: 4px 4px;
+  border-color: color-mix(in srgb, var(--c-text) 8%, transparent);
+}
+.love-page[data-card="outline"] .love-card {
+  background: transparent;
+  box-shadow: none;
+  border-color: color-mix(in srgb, var(--c-text) 22%, transparent);
+}
+.love-page[data-cursor="heart"], .love-page[data-cursor="heart"] * {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='28' viewBox='0 0 24 24'%3E%3Cpath d='M12 21s-7.5-4.6-9.5-9.2C1 8.3 3.4 5 6.8 5c2 0 3.6 1.1 5.2 3 1.6-1.9 3.2-3 5.2-3 3.4 0 5.8 3.3 4.3 6.8C19.5 16.4 12 21 12 21z' fill='%23ff3d7f' stroke='white' stroke-width='1.5'/%3E%3C/svg%3E") 14 14, auto;
+}
+
+/* Padrão de fundo animado (desligado com prefers-reduced-motion) */
+.bg-drift { animation: bg-drift 60s linear infinite; }
+@keyframes bg-drift { to { background-position: 480px 480px; } }
+
+/* Papéis de carta */
+.paper-lined {
+  background-color: #fffdf8;
+  background-image: linear-gradient(transparent 31px, rgba(80, 120, 200, 0.18) 32px);
+  background-size: 100% 32px;
+  line-height: 32px;
+}
+.paper-kraft { background: #d9b98c; background-image: radial-gradient(rgba(90,60,20,0.12) 1px, transparent 1px); background-size: 5px 5px; color: #3b2a14; }
+.paper-vintage { background: linear-gradient(135deg, #f5e6c8, #ead2a6); box-shadow: inset 0 0 60px rgba(120, 80, 30, 0.25); color: #3b2a1a; }
+.paper-plain { background: #ffffff; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Leaflet: pins em forma de coração */
+.heart-pin { background: none; border: none; }
