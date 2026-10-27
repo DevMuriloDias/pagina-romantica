@@ -163,12 +163,12 @@ E-mails: pagamento aprovado (link, QR Code, link mágico de edição e dicas), c
 
 ## Crons
 
-Rotas protegidas por `Authorization: Bearer $CRON_SECRET` (padrão da Vercel Cron, já configurado em `vercel.json`):
+Rotas protegidas por `Authorization: Bearer $CRON_SECRET` (padrão da Vercel Cron, já configurado em `vercel.json`). O plano Hobby da Vercel só permite crons diários; no plano Pro, use `*/10 * * * *` (reconcile) e `*/15 * * * *` (emails). Mesmo com cron diário, a tela de pagamento consulta o Mercado Pago a cada 15 s enquanto o cliente está nela, e os e-mails já têm 3 tentativas imediatas.
 
 | Rota | Frequência | O que faz |
 |---|---|---|
-| `/api/cron/reconcile` | 10 min | consulta na API os pedidos pendentes (webhook perdido) e expira Pix vencidos |
-| `/api/cron/emails` | 15 min | reenvia e-mails que falharam |
+| `/api/cron/reconcile` | diário (10 min no plano Pro) | consulta na API os pedidos pendentes (webhook perdido) e expira Pix vencidos |
+| `/api/cron/emails` | diário (15 min no plano Pro) | reenvia e-mails que falharam |
 | `/api/cron/cleanup` | diário | apaga rascunhos não pagos e suas fotos após `DRAFT_RETENTION_DAYS` (30) e uploads abandonados |
 
 Fora da Vercel, agende com qualquer cron: `curl -H "Authorization: Bearer $CRON_SECRET" https://seudominio/api/cron/reconcile`.
