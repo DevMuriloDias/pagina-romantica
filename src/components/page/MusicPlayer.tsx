@@ -42,6 +42,8 @@ export const MusicPlayer = forwardRef<MusicHandle, { music: MusicConfig; contain
   const [muted, setMuted] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [spotifyOpen, setSpotifyOpen] = useState(false);
+  const [volumeHint, setVolumeHint] = useState(false);
+  const hintShown = useRef(false);
 
   const isYT = music.provider === "youtube" && Boolean(music.mediaId);
 
@@ -78,7 +80,15 @@ export const MusicPlayer = forwardRef<MusicHandle, { music: MusicConfig; contain
           },
           onStateChange: (e) => {
             setPlaying(e.data === 1);
-            if (e.data === 1) setBlocked(false);
+            if (e.data === 1) {
+              setBlocked(false);
+              // lembrete de volume na primeira vez que a música começa
+              if (!hintShown.current) {
+                hintShown.current = true;
+                setVolumeHint(true);
+                setTimeout(() => setVolumeHint(false), 6000);
+              }
+            }
             if (e.data === 0 && music.loop) {
               player.current?.seekTo(music.startAt || 0, true);
               player.current?.playVideo();
@@ -109,68 +119,94 @@ export const MusicPlayer = forwardRef<MusicHandle, { music: MusicConfig; contain
 
   if (music.provider === "none" || !music.mediaId) return null;
 
-  const pos = contained ? "absolute" : "fixed";
+  // respeita o entalhe/área segura de celulares (e a moldura do preview)
+  const barTop = { top: contained ? 44 : "max(0.75rem, calc(env(safe-area-inset-top) + 0.5rem))" };
 
+  // Barra fixa no topo da página (sticky, sem empurrar o conteúdo): a pessoa vê tudo enquanto a música toca.
   if (music.provider === "spotify") {
     return (
-      <div className={cn(pos, "bottom-4 right-4 z-50 flex flex-col items-end gap-2")}>
-        {spotifyOpen ? (
-          <iframe
-            title="Música no Spotify"
-            src={`https://open.spotify.com/embed/${music.spotifyType}/${music.mediaId}?utm_source=generator&theme=0`}
-            width="300"
-            height="152"
-            className="rounded-xl shadow-2xl"
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-            loading="lazy"
-          />
-        ) : null}
-        <button
-          type="button"
-          onClick={() => setSpotifyOpen((o) => !o)}
-          className="flex items-center gap-2 rounded-full bg-black/75 px-4 py-2 text-sm text-white shadow-lg backdrop-blur"
-          aria-expanded={spotifyOpen}
-        >
-          <span aria-hidden>🎵</span> {spotifyOpen ? "Esconder música" : "Ouvir nossa música"}
-        </button>
+      <div className="pointer-events-none sticky top-0 z-[50] h-0">
+        <div className="absolute inset-x-0 flex flex-col items-center gap-2 px-3" style={barTop}>
+          <button
+            type="button"
+            onClick={() => setSpotifyOpen((o) => !o)}
+            className="pointer-events-auto flex items-center gap-2 rounded-full bg-black/75 px-4 py-2 text-sm text-white shadow-lg backdrop-blur"
+            aria-expanded={spotifyOpen}
+          >
+            <span aria-hidden>🎵</span> {spotifyOpen ? "Esconder música" : `Ouvir: ${music.title || "nossa música"}`}
+          </button>
+          {spotifyOpen ? (
+            <iframe
+              title="Música no Spotify"
+              src={`https://open.spotify.com/embed/${music.spotifyType}/${music.mediaId}?utm_source=generator&theme=0`}
+              width="100%"
+              height="80"
+              className="pointer-events-auto max-w-sm rounded-xl shadow-2xl"
+              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+              loading="lazy"
+            />
+          ) : null}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={cn(pos, "bottom-4 right-4 z-50")}>
+    <div className="pointer-events-none sticky top-0 z-[50] h-0">
       {/* player real, invisível (controlado pela API) */}
-      <div ref={host} className="pointer-events-none absolute bottom-0 right-0 size-px overflow-hidden opacity-0" aria-hidden />
-      <div className={cn("flex items-center gap-1 rounded-full bg-black/70 p-1 pl-3 text-white shadow-lg backdrop-blur", blocked && "animate-pulse")}>
-        <span className={cn("mr-1 text-sm", playing && "motion-safe:animate-spin [animation-duration:3s]")} aria-hidden>
-          ♫
-        </span>
-        <span className="max-w-28 truncate text-xs opacity-80">{music.title || "Nossa música"}</span>
-        <button
-          type="button"
-          onClick={() => {
-            if (playing) player.current?.pauseVideo();
-            else play();
-          }}
-          className="flex size-8 items-center justify-center rounded-full hover:bg-white/15"
-          aria-label={playing ? "Pausar música" : "Tocar música"}
-        >
-          {playing ? "❚❚" : "▶"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            if (!player.current) return;
-            if (muted) player.current.unMute();
-            else player.current.mute();
-            setMuted(!muted);
-          }}
-          className="flex size-8 items-center justify-center rounded-full hover:bg-white/15"
-          aria-label={muted ? "Ativar som" : "Silenciar"}
-        >
-          {muted ? "🔇" : "🔊"}
-        </button>
+      <div ref={host} className="absolute left-0 top-0 size-px overflow-hidden opacity-0" aria-hidden />
+      <div className="absolute inset-x-0 flex flex-col items-center gap-2 px-3" style={barTop}>
+        <div className={cn("pointer-events-auto flex max-w-full items-center gap-1 rounded-full bg-black/70 p-1 pl-3 text-white shadow-lg backdrop-blur", blocked && "ring-2 ring-white/80 motion-safe:animate-pulse")}>
+          <Equalizer playing={playing} />
+          <span className="ml-1 max-w-40 truncate text-xs opacity-90">{blocked ? "Toque para ouvir a música" : music.title || "Nossa música"}</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (playing) player.current?.pauseVideo();
+              else play();
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full hover:bg-white/15"
+            aria-label={playing ? "Pausar música" : "Tocar música"}
+          >
+            {playing ? "❚❚" : "▶"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!player.current) return;
+              if (muted) player.current.unMute();
+              else player.current.mute();
+              setMuted(!muted);
+            }}
+            className="flex size-8 shrink-0 items-center justify-center rounded-full hover:bg-white/15"
+            aria-label={muted ? "Ativar som" : "Silenciar"}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
+        {volumeHint ? (
+          <div role="status" className="pointer-events-auto rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-neutral-800 shadow-md motion-safe:animate-bounce">
+            🔊 Aumente o volume para ouvir a nossa música
+          </div>
+        ) : null}
       </div>
     </div>
   );
 });
+
+function Equalizer({ playing }: { playing: boolean }) {
+  return (
+    <span className="flex h-4 items-end gap-[2px]" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="w-[3px] rounded-full bg-white"
+          style={{
+            height: playing ? undefined : "30%",
+            animation: playing ? `eq 0.${8 + i}s ease-in-out ${i * 0.15}s infinite alternate` : undefined,
+          }}
+        />
+      ))}
+    </span>
+  );
+}

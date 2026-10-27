@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useCallback, useEffect } from "react";
 import type { Photo } from "@/lib/content/schema";
 import { Img } from "./Img";
+import { Overlay } from "./Overlay";
 
 export function Lightbox({ photos, index, onChange }: { photos: Photo[]; index: number | null; onChange: (i: number | null) => void }) {
   const close = useCallback(() => onChange(null), [onChange]);
@@ -23,20 +24,21 @@ export function Lightbox({ photos, index, onChange }: { photos: Photo[]; index: 
 
   const photo = index !== null ? photos[index] : null;
   return (
+    <Overlay>
     <AnimatePresence>
       {photo ? (
         <motion.div
           role="dialog"
           aria-modal="true"
           aria-label="Foto ampliada"
-          className="fixed inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 p-4"
+          className="pointer-events-auto absolute inset-0 z-[70] flex flex-col items-center justify-center bg-black/90 p-4"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={close}
         >
           <motion.div key={photo.id} initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="max-h-[80%] max-w-full" onClick={(e) => e.stopPropagation()}>
-            <Img image={photo.image} className="max-h-[75vh] w-auto max-w-full rounded object-contain" eager alt={photo.image.alt || photo.caption} />
+            <Img image={photo.image} className="max-h-[60svh] w-auto max-w-full rounded object-contain" eager alt={photo.image.alt || photo.caption} />
           </motion.div>
           {photo.caption ? <p className="mt-4 max-w-lg text-center text-white/90">{photo.caption}</p> : null}
           <div className="mt-4 flex gap-3" onClick={(e) => e.stopPropagation()}>
@@ -47,5 +49,6 @@ export function Lightbox({ photos, index, onChange }: { photos: Photo[]; index: 
         </motion.div>
       ) : null}
     </AnimatePresence>
+    </Overlay>
   );
 }

@@ -12,6 +12,7 @@ export function HeroDemo() {
   const content = useMemo(() => sampleContent(), []);
   const [idx, setIdx] = useState(0);
   const screen = useRef<HTMLDivElement>(null);
+  const [overlay, setOverlay] = useState<HTMLDivElement | null>(null);
   const theme = TEMPLATES[idx % TEMPLATES.length]!.theme;
 
   useEffect(() => {
@@ -47,8 +48,8 @@ export function HeroDemo() {
   return (
     <div className="relative">
       <div className="absolute -inset-10 -z-10 rounded-full bg-[radial-gradient(circle,rgba(194,38,79,0.18),transparent_65%)] blur-2xl" aria-hidden />
-      <PhoneFrame screenRef={screen}>
-        <PageRenderer content={content} theme={theme} runtime={runtime} contained />
+      <PhoneFrame screenRef={screen} overlayRef={setOverlay}>
+        <PageRenderer content={content} theme={theme} runtime={runtime} contained overlayRoot={overlay} />
       </PhoneFrame>
       <div className="absolute -right-2 top-16 hidden rotate-6 rounded-2xl bg-white px-4 py-3 shadow-xl sm:block">
         <p className="font-hand text-xl text-rose">Template:</p>

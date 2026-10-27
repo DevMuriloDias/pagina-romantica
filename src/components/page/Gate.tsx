@@ -15,13 +15,13 @@ export function Gate({
   recipientName,
   onOpen,
   verify,
-  contained,
+  hasMusic,
 }: {
   gate: GateConfig;
   recipientName: string;
   onOpen: () => void;
   verify?: VerifyFn;
-  contained?: boolean;
+  hasMusic?: boolean;
 }) {
   const reduced = useReducedMotion();
   const [answer, setAnswer] = useState("");
@@ -58,7 +58,7 @@ export function Gate({
       {!leaving ? (
         <motion.div
           key="gate"
-          className={`${contained ? "absolute" : "fixed"} inset-0 z-[80] flex items-center justify-center overflow-hidden p-6`}
+          className="pointer-events-auto absolute inset-0 z-[80] flex items-center justify-center overflow-hidden p-6"
           style={{ background: "var(--c-bg)" }}
           exit={reduced ? { opacity: 0 } : { opacity: 0, scale: 1.08, filter: "blur(8px)" }}
           transition={{ duration: 0.8 }}
@@ -120,6 +120,11 @@ export function Gate({
                 {gate.buttonLabel || "Abrir 💌"}
               </button>
             )}
+            {hasMusic ? (
+              <p className="mt-6 flex items-center justify-center gap-2 text-sm opacity-80">
+                <span aria-hidden className="text-lg">🔊</span> Aumente o volume: esta página tem música
+              </p>
+            ) : null}
           </motion.div>
         </motion.div>
       ) : null}

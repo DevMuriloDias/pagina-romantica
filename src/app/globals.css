@@ -128,3 +128,9 @@ body {
 
 /* Leaflet: pins em forma de coração */
 .heart-pin { background: none; border: none; }
+
+/* Equalizador do player de música */
+@keyframes eq {
+  from { height: 25%; }
+  to { height: 100%; }
+}

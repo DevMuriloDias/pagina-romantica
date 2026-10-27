@@ -11,6 +11,7 @@ import { EmptyHint, SectionShell, SectionTitle } from "../SectionShell";
 import { useRuntime } from "../runtime";
 import type { SectionProps } from "../types";
 import { useNow } from "../useNow";
+import { Overlay } from "../Overlay";
 
 export function Letters({ section, theme }: SectionProps<"letters">) {
   const { mode } = useRuntime();
@@ -30,7 +31,9 @@ export function Letters({ section, theme }: SectionProps<"letters">) {
           ))}
         </div>
       )}
-      <AnimatePresence>{open ? <OpenLetter letter={open} onClose={() => setOpen(null)} /> : null}</AnimatePresence>
+      <Overlay>
+        <AnimatePresence>{open ? <OpenLetter letter={open} onClose={() => setOpen(null)} /> : null}</AnimatePresence>
+      </Overlay>
     </SectionShell>
   );
 }
@@ -91,7 +94,7 @@ function OpenLetter({ letter, onClose }: { letter: Letter; onClose: () => void }
       role="dialog"
       aria-modal="true"
       aria-label={letter.title || "Carta"}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+      className="pointer-events-auto absolute inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

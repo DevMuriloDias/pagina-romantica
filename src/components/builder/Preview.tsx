@@ -30,6 +30,7 @@ export function Preview({ device, gateKey, focusId, watermark = true }: { device
   const outer = useRef<HTMLDivElement>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 400, h: 700 });
+  const [overlay, setOverlay] = useState<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const el = outer.current;
@@ -64,6 +65,7 @@ export function Preview({ device, gateKey, focusId, watermark = true }: { device
       theme={theme}
       runtime={runtime}
       contained
+      overlayRoot={overlay}
       watermark={watermark}
       showGate={gateKey > 0}
       verify={verify}
@@ -80,13 +82,11 @@ export function Preview({ device, gateKey, focusId, watermark = true }: { device
           <span className="size-2.5 rounded-full bg-emerald-300" />
           <span className="ml-3 h-4 flex-1 rounded bg-white/80" />
         </div>
-        <div
-          ref={scroller}
-          className="overflow-y-auto overflow-x-hidden [transform-origin:top_left] [transform:translateZ(0)]"
-          style={{ width: DESKTOP_W, height: (box.h - 32) / scale, transform: `scale(${scale})` }}
-          data-preview-scroller
-        >
-          {renderer}
+        <div className="relative [transform-origin:top_left]" style={{ width: DESKTOP_W, height: (box.h - 32) / scale, transform: `scale(${scale})` }}>
+          <div ref={scroller} className="h-full w-full overflow-y-auto overflow-x-hidden [transform:translateZ(0)]" data-preview-scroller>
+            {renderer}
+          </div>
+          <div ref={setOverlay} className="pointer-events-none absolute inset-0 overflow-hidden" />
         </div>
       </div>
     );
@@ -98,8 +98,11 @@ export function Preview({ device, gateKey, focusId, watermark = true }: { device
       <div style={{ transform: `scale(${scale})`, transformOrigin: "top center" }}>
         <div className="relative w-[400px] rounded-[52px] bg-[#1a1416] p-[12px] shadow-[0_40px_80px_-30px_rgba(42,20,24,0.55)]">
           <div className="absolute left-1/2 top-[20px] z-20 h-[24px] w-[100px] -translate-x-1/2 rounded-full bg-[#1a1416]" aria-hidden />
-          <div ref={scroller} className={cn("relative h-[776px] overflow-y-auto overflow-x-hidden rounded-[40px] bg-white [scrollbar-width:none] [transform:translateZ(0)]")} data-preview-scroller>
-            {renderer}
+          <div className="relative h-[776px] overflow-hidden rounded-[40px]">
+            <div ref={scroller} className={cn("h-full overflow-y-auto overflow-x-hidden bg-white [scrollbar-width:none] [transform:translateZ(0)]")} data-preview-scroller>
+              {renderer}
+            </div>
+            <div ref={setOverlay} className="pointer-events-none absolute inset-0 overflow-hidden rounded-[40px]" />
           </div>
         </div>
       </div>

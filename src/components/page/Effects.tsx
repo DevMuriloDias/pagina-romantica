@@ -18,7 +18,7 @@ interface Particle {
 const GLYPH: Partial<Record<EffectType, string>> = { hearts: "♥", petals: "❀", stars: "✦", snow: "❄" };
 
 /** Efeitos de fundo em canvas (leve). Desligado com prefers-reduced-motion. */
-export function Effects({ type, intensity, colors, contained }: { type: EffectType; intensity: number; colors: string[]; contained?: boolean }) {
+export function Effects({ type, intensity, colors }: { type: EffectType; intensity: number; colors: string[] }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const reduced = useReducedMotion();
 
@@ -110,5 +110,5 @@ export function Effects({ type, intensity, colors, contained }: { type: EffectTy
   }, [type, intensity, colors, reduced]);
 
   if (type === "none" || reduced) return null;
-  return <canvas ref={ref} aria-hidden className={`pointer-events-none ${contained ? "absolute" : "fixed"} inset-0 z-[1] h-full w-full`} />;
+  return <canvas ref={ref} aria-hidden className="pointer-events-none absolute inset-0 z-0 h-full w-full opacity-70" />;
 }
