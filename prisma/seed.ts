@@ -48,12 +48,14 @@ async function main() {
     create: { code: "BEMVINDO10", type: "PERCENT", value: 10, maxUses: 1000 },
   });
 
-  const email = (process.env.ADMIN_EMAIL ?? "admin@example.com").toLowerCase();
-  const password = process.env.ADMIN_PASSWORD ?? "troque-esta-senha";
+  const email = (process.env.ADMIN_EMAIL ?? "admin@example.com").trim().toLowerCase();
+  const envPassword = process.env.ADMIN_PASSWORD?.trim();
+  const passwordHash = await bcrypt.hash(envPassword || "troque-esta-senha", 12);
+  // ADMIN_PASSWORD na Vercel é a fonte da verdade: trocar a variável e fazer redeploy redefine a senha.
   await db.adminUser.upsert({
     where: { email },
-    update: {},
-    create: { email, name: "Admin", passwordHash: await bcrypt.hash(password, 12) },
+    update: envPassword ? { passwordHash } : {},
+    create: { email, name: "Admin", passwordHash },
   });
 
   console.log(`Seed concluído: ${plans.length} planos (preços PLACEHOLDER), ${TEMPLATES.length} templates, cupom BEMVINDO10, admin ${email}.`);
