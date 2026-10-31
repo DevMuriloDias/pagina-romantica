@@ -18,6 +18,8 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline' ${isDev ? "'unsafe-eval'" : ""} https://www.youtube.com https://s.ytimg.com https://sdk.mercadopago.com ${mp}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  // compressão de fotos no navegador roda num Web Worker criado a partir de blob:
+  "worker-src 'self' blob:",
   "font-src 'self' data: https://fonts.gstatic.com",
   "img-src 'self' data: blob: https:",
   "media-src 'self' blob: https:",

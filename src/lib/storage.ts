@@ -25,6 +25,10 @@ function client(): S3Client {
     endpoint: e.S3_ENDPOINT || undefined,
     forcePathStyle: Boolean(e.S3_ENDPOINT),
     credentials: { accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY },
+    // O SDK novo adiciona checksum CRC32 por padrão; em URL pré-assinada ele seria o do corpo
+    // vazio e o Cloudflare R2 recusa o upload (403). Só calculamos quando a API exigir.
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
   });
   return s3;
 }
