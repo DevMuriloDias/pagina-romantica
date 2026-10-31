@@ -15,14 +15,24 @@ export type UploadTarget =
 
 const LOCAL_DIR = path.join(process.cwd(), ".uploads");
 
+/** Aceita o Endpoint colado com o nome do bucket ou barra no final: usa só a origem (https://<id>.r2.cloudflarestorage.com). */
+export function normalizeEndpoint(endpoint: string | undefined): string | undefined {
+  if (!endpoint) return undefined;
+  try {
+    return new URL(endpoint).origin;
+  } catch {
+    return endpoint;
+  }
+}
+
 let s3: S3Client | null = null;
-function client(): S3Client {
+export function client(): S3Client {
   if (s3) return s3;
   const e = env();
   if (!e.S3_BUCKET || !e.S3_ACCESS_KEY_ID || !e.S3_SECRET_ACCESS_KEY) throw new Error("S3 não configurado (S3_BUCKET/S3_ACCESS_KEY_ID/S3_SECRET_ACCESS_KEY).");
   s3 = new S3Client({
     region: e.S3_REGION,
-    endpoint: e.S3_ENDPOINT || undefined,
+    endpoint: normalizeEndpoint(e.S3_ENDPOINT),
     forcePathStyle: Boolean(e.S3_ENDPOINT),
     credentials: { accessKeyId: e.S3_ACCESS_KEY_ID, secretAccessKey: e.S3_SECRET_ACCESS_KEY },
     // O SDK novo adiciona checksum CRC32 por padrão; em URL pré-assinada ele seria o do corpo

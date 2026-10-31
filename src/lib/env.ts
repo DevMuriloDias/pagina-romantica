@@ -54,7 +54,8 @@ let cached: Env | null = null;
 export function env(): Env {
   if (cached) return cached;
   const parsed = EnvSchema.safeParse(
-    Object.fromEntries(Object.entries(process.env).map(([k, v]) => [k, v === "" ? undefined : v])),
+    // valores colados com espaço/quebra de linha no começo ou fim são um erro comum na Vercel
+    Object.fromEntries(Object.entries(process.env).map(([k, v]) => [k, v?.trim() === "" ? undefined : v?.trim()])),
   );
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("\n");

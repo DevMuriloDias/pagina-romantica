@@ -15,6 +15,7 @@ const NAV = [
   ["/admin/templates", "Templates"],
   ["/admin/webhooks", "Webhooks"],
   ["/admin/emails", "E-mails"],
+  ["/admin/armazenamento", "Armazenamento"],
 ] as const;
 
 async function logout() {
