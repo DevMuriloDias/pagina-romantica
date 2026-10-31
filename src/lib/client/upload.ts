@@ -36,11 +36,19 @@ export async function uploadImage(pageId: string, input: File | Blob, alt = ""):
   return { assetId: done.assetId, url: done.url, width: done.width, height: done.height, alt };
 }
 
+/**
+ * Para ler os pixels (recorte, paleta) a imagem precisa vir do nosso domínio:
+ * fotos do bucket passam pelo proxy /api/uploads/proxy.
+ */
+export function sameOriginImageUrl(src: string): string {
+  if (src.startsWith("/")) return src;
+  return `/api/uploads/proxy?src=${encodeURIComponent(src)}`;
+}
+
 /** Recorta uma imagem (por URL) em canvas e devolve um Blob WebP. */
 export async function cropImage(src: string, crop: { x: number; y: number; w: number; h: number }, maxSide = 2000): Promise<Blob> {
   const img = new Image();
-  img.crossOrigin = "anonymous";
-  img.src = src;
+  img.src = sameOriginImageUrl(src);
   await img.decode();
   const sx = crop.x * img.naturalWidth;
   const sy = crop.y * img.naturalHeight;

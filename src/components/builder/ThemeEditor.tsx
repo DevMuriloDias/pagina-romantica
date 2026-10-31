@@ -11,6 +11,7 @@ import { gradientCss, safeImageUrl } from "@/lib/theme/css";
 import { FONTS, fontStack, googleFontsUrl, type FontCategory } from "@/lib/theme/fonts";
 import { EFFECT_TYPES, type Theme } from "@/lib/theme/schema";
 import { SUGGESTED_PALETTES, type TemplateDef } from "@/lib/theme/templates";
+import { sameOriginImageUrl } from "@/lib/client/upload";
 import { cn } from "@/lib/utils";
 import { useBuilder } from "@/stores/builder";
 import { ChoiceChips, ColorField } from "./fields";
@@ -59,7 +60,7 @@ export function ThemeEditor({ templates }: { templates: TemplateDef[] }) {
       const { Vibrant } = await import("node-vibrant/browser");
       const src = safeImageUrl(img.url);
       if (!src) throw new Error("Imagem inválida");
-      const p = await Vibrant.from(src).getPalette();
+      const p = await Vibrant.from(sameOriginImageUrl(src)).getPalette();
       const hex = (sw: { hex: string } | null | undefined, fb: string) => sw?.hex ?? fb;
       const primary = hex(p.Vibrant ?? p.DarkVibrant, theme.colors.primary);
       const bg = hex(p.LightMuted ?? p.LightVibrant, "#fffaf7");
@@ -157,7 +158,7 @@ export function ThemeEditor({ templates }: { templates: TemplateDef[] }) {
             <div className="flex flex-wrap gap-2">
               {photos.map((p) => (
                 <button key={p.url} type="button" onClick={() => paletteFromPhoto(p)} className="size-11 overflow-hidden rounded-lg ring-1 ring-line hover:ring-rose" aria-label="Usar as cores desta foto">
-                  <img src={safeImageUrl(p.url) ?? ""} alt="" className="size-full object-cover" crossOrigin="anonymous" />
+                  <img src={safeImageUrl(p.url) ?? ""} alt="" className="size-full object-cover" />
                 </button>
               ))}
             </div>

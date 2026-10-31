@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogHeader } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/misc";
 import { Slider } from "@/components/ui/slider";
 import type { ImageRef } from "@/lib/content/schema";
-import { cropImage, uploadImage } from "@/lib/client/upload";
+import { cropImage, sameOriginImageUrl, uploadImage } from "@/lib/client/upload";
 import { safeImageUrl } from "@/lib/theme/css";
 import { cn } from "@/lib/utils";
 import { useBuilder } from "@/stores/builder";
@@ -117,10 +117,9 @@ export function CropDialog({ image, aspect: fixedAspect, onClose, onCropped }: {
 
   useEffect(() => {
     const img = new Image();
-    img.crossOrigin = "anonymous";
     img.onload = () => setNatural({ w: img.naturalWidth, h: img.naturalHeight });
     img.onerror = () => setError("Não foi possível carregar a imagem para recorte.");
-    img.src = src;
+    img.src = sameOriginImageUrl(src);
   }, [src]);
 
   const aspect = aspectKey === "orig" ? (natural ? natural.w / natural.h : 1) : Number(aspectKey);
@@ -179,7 +178,7 @@ export function CropDialog({ image, aspect: fixedAspect, onClose, onCropped }: {
         >
           {natural ? (
             <img
-              src={src}
+              src={sameOriginImageUrl(src)}
               alt=""
               draggable={false}
               className="absolute max-w-none select-none"
