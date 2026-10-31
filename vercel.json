@@ -1,8 +1,17 @@
 {
-  "buildCommand": "prisma migrate deploy && tsx prisma/seed.ts && next build",
+  "buildCommand": "prisma generate && prisma migrate deploy && tsx prisma/seed.ts && next build",
   "crons": [
-    { "path": "/api/cron/reconcile", "schedule": "7 4 * * *" },
-    { "path": "/api/cron/emails", "schedule": "37 4 * * *" },
-    { "path": "/api/cron/cleanup", "schedule": "17 6 * * *" }
+    {
+      "path": "/api/cron/reconcile",
+      "schedule": "7 4 * * *"
+    },
+    {
+      "path": "/api/cron/emails",
+      "schedule": "37 4 * * *"
+    },
+    {
+      "path": "/api/cron/cleanup",
+      "schedule": "17 6 * * *"
+    }
   ]
 }
