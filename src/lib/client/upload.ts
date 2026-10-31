@@ -14,7 +14,7 @@ export async function uploadImage(pageId: string, input: File | Blob, alt = ""):
   if (!/^image\//.test(file.type) && !/\.(heic|heif)$/i.test(file.name)) throw new Error("Escolha um arquivo de imagem.");
   let compressed: Blob = file;
   try {
-    compressed = await imageCompression(file, { maxWidthOrHeight: 2000, maxSizeMB: 2, fileType: "image/webp", initialQuality: 0.85, useWebWorker: true });
+    compressed = await imageCompression(file, { maxWidthOrHeight: 2000, maxSizeMB: 2, fileType: "image/webp", initialQuality: 0.85, useWebWorker: false });
   } catch {
     // alguns formatos (ex.: HEIC em navegadores sem suporte) não comprimem; o servidor valida
   }
