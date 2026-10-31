@@ -110,7 +110,9 @@ export function CheckoutView({ pageId, recipientName, initialOrderId, initialEma
   const devApprove = view?.pix && quote?.provider === "mock" && orderId
     ? async () => {
         const o = await api<{ devPaymentId?: string }>(`/api/orders/${orderId}`);
-        if (o.devPaymentId) await api(`/api/dev/mock-payments/${o.devPaymentId}`, { body: { status: "approved" } });
+        if (!o.devPaymentId) throw new Error("Pagamento simulado não encontrado. Gere um novo Pix.");
+        const r = await api<{ ok: boolean; webhookStatus: number }>(`/api/dev/mock-payments/${o.devPaymentId}`, { body: { status: "approved" } });
+        if (!r.ok) throw new Error(`O aviso de pagamento (webhook) foi recusado (HTTP ${r.webhookStatus}). Confira o MP_WEBHOOK_SECRET.`);
       }
     : undefined;
 

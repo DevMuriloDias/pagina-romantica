@@ -264,3 +264,19 @@ model AdminUser {
   name         String
   createdAt    DateTime @default(now())
 }
+
+/// Pagamentos simulados (PAYMENTS_PROVIDER=mock). Guardados no banco para funcionar
+/// em ambientes com várias instâncias (ex.: Vercel). Não é usado com o Mercado Pago real.
+model MockPayment {
+  id                String   @id
+  idempotencyKey    String   @unique
+  status            String
+  statusDetail      String?
+  externalReference String
+  amountCents       Int
+  method            String
+  qrCode            String?
+  expiresAt         DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}

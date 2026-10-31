@@ -15,7 +15,7 @@ export const POST = route(async (req: Request, { params }: Ctx) => {
   if (env().PAYMENTS_PROVIDER !== "mock") throw new ApiError(404, "Não encontrado", "not_found");
   const { id } = await params;
   const { status } = await parseBody(req, z.object({ status: z.enum(["approved", "rejected", "cancelled", "refunded", "charged_back"]) }));
-  const updated = setMockPaymentStatus(id, status, status === "cancelled" ? "expired" : null);
+  const updated = await setMockPaymentStatus(id, status, status === "cancelled" ? "expired" : null);
   if (!updated) throw new ApiError(404, "Pagamento simulado não encontrado", "not_found");
 
   const requestId = randomToken(8);

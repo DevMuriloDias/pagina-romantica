@@ -17,9 +17,11 @@ function useCountdown(target: string | null) {
   return left;
 }
 
-export function PixPanel({ qrCode, qrBase64, expiresAt, onRegenerate, regenerating, devApprove }: { qrCode: string; qrBase64: string | null; expiresAt: string | null; onRegenerate: () => void; regenerating: boolean; devApprove?: () => void }) {
+export function PixPanel({ qrCode, qrBase64, expiresAt, onRegenerate, regenerating, devApprove }: { qrCode: string; qrBase64: string | null; expiresAt: string | null; onRegenerate: () => void; regenerating: boolean; devApprove?: () => Promise<void> }) {
   const [dataUrl, setDataUrl] = useState<string | null>(qrBase64 ? `data:image/png;base64,${qrBase64}` : null);
   const left = useCountdown(expiresAt);
+  const [simulating, setSimulating] = useState(false);
+  const [simError, setSimError] = useState<string | null>(null);
   const expired = left === 0;
 
   useEffect(() => {
@@ -54,7 +56,26 @@ export function PixPanel({ qrCode, qrBase64, expiresAt, onRegenerate, regenerati
           {devApprove ? (
             <div className="rounded-xl border border-dashed border-ink/20 p-3 text-xs text-ink-soft">
               Modo de teste (pagamentos simulados).{" "}
-              <button type="button" className="font-semibold text-rose underline" onClick={devApprove} data-testid="mock-approve">Simular pagamento aprovado</button>
+              <button
+                type="button"
+                className="font-semibold text-rose underline disabled:opacity-60"
+                disabled={simulating}
+                data-testid="mock-approve"
+                onClick={async () => {
+                  setSimulating(true);
+                  setSimError(null);
+                  try {
+                    await devApprove();
+                  } catch (err) {
+                    setSimError(err instanceof Error ? err.message : "Não foi possível simular o pagamento.");
+                  } finally {
+                    setSimulating(false);
+                  }
+                }}
+              >
+                {simulating ? "Confirmando..." : "Simular pagamento aprovado"}
+              </button>
+              {simError ? <p className="mt-2 text-red-700" role="alert">{simError}</p> : null}
             </div>
           ) : null}
         </>
