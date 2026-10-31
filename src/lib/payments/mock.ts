@@ -43,7 +43,7 @@ export const mockProvider: PaymentProvider = {
     const existing = await db.mockPayment.findUnique({ where: { idempotencyKey: input.idempotencyKey } });
     if (existing) return toPayment(existing);
     const id = newId();
-    const qrCode = `00020126580014br.gov.bcb.pix0136mock-${id}5204000053039865406${(input.amountCents / 100).toFixed(2)}5802BR5913AMOR EM PAGINA6009SAO PAULO62070503***6304ABCD`;
+    const qrCode = `00020126580014br.gov.bcb.pix0136mock-${id}5204000053039865406${(input.amountCents / 100).toFixed(2)}5802BR5907AVELOVE6009SAO PAULO62070503***6304ABCD`;
     const created = await db.mockPayment.create({
       data: {
         id,

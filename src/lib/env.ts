@@ -28,7 +28,7 @@ const EnvSchema = z.object({
   CARD_MAX_INSTALLMENTS: z.coerce.number().int().min(1).max(12).default(12),
 
   RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default("Amor em Página <onboarding@resend.dev>"),
+  EMAIL_FROM: z.string().default("Avelove <onboarding@resend.dev>"),
   EMAIL_REPLY_TO: z.string().optional(),
 
   ANTHROPIC_API_KEY: z.string().optional(),
@@ -40,7 +40,7 @@ const EnvSchema = z.object({
   UPSTASH_REDIS_REST_URL: z.string().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 
-  NOMINATIM_USER_AGENT: z.string().default("AmorEmPagina/1.0"),
+  NOMINATIM_USER_AGENT: z.string().default("Avelove/1.0 (suporte@avelove.com.br)"),
 
   CRON_SECRET: z.string().optional(),
   DRAFT_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),

@@ -105,7 +105,7 @@ export const mercadoPago: PaymentProvider = {
         installments: input.installments,
         external_reference: input.externalReference,
         notification_url: input.notificationUrl,
-        statement_descriptor: "AMOREMPAGINA",
+        statement_descriptor: "AVELOVE",
         payer: input.payer,
       }),
     });

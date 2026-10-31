@@ -1,4 +1,4 @@
-# Amor em Página 💌
+# Avelove 💌
 
 Aplicação web para criar **páginas românticas personalizadas**: o cliente responde um questionário, a IA gera o primeiro rascunho, ele edita tudo com prévia ao vivo, paga com **Pix ou cartão** (Mercado Pago) e recebe o link na tela e por e-mail.
 
@@ -144,7 +144,7 @@ Cloudflare R2:
 2. Habilite acesso público (domínio próprio ou `r2.dev`) → `S3_PUBLIC_URL`.
 3. Configure o **CORS** do bucket (necessário para o upload direto, o recorte e a extração de paleta):
    ```json
-   [{ "AllowedOrigins": ["https://seudominio.com.br", "http://localhost:3000"], "AllowedMethods": ["GET", "PUT"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 3600 }]
+   [{ "AllowedOrigins": ["https://avelove.com.br", "http://localhost:3000"], "AllowedMethods": ["GET", "PUT"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 3600 }]
    ```
 
 ## E-mails (Resend)
@@ -171,7 +171,7 @@ Rotas protegidas por `Authorization: Bearer $CRON_SECRET` (padrão da Vercel Cro
 | `/api/cron/emails` | diário (15 min no plano Pro) | reenvia e-mails que falharam |
 | `/api/cron/cleanup` | diário | apaga rascunhos não pagos e suas fotos após `DRAFT_RETENTION_DAYS` (30) e uploads abandonados |
 
-Fora da Vercel, agende com qualquer cron: `curl -H "Authorization: Bearer $CRON_SECRET" https://seudominio/api/cron/reconcile`.
+Fora da Vercel, agende com qualquer cron: `curl -H "Authorization: Bearer $CRON_SECRET" https://avelove.com.br/api/cron/reconcile`.
 
 ## Testes
 
@@ -191,7 +191,7 @@ Vercel (recomendado):
 1. Importe o repositório, configure as variáveis de ambiente de produção.
 2. Build command padrão (`next build`). Rode as migrações no deploy: `npx prisma migrate deploy` (ex.: no *build command* `prisma migrate deploy && next build`).
 3. Rode o seed uma vez (`npm run db:seed`) e **defina os preços reais** em `/admin/planos`.
-4. Cadastre o webhook do Mercado Pago em produção apontando para `https://seudominio/api/webhooks/mercadopago`.
+4. Cadastre o webhook do Mercado Pago em produção apontando para `https://avelove.com.br/api/webhooks/mercadopago`.
 5. Os crons de `vercel.json` passam a rodar automaticamente (defina `CRON_SECRET`).
 
 Headers de segurança e CSP (compatível com YouTube, Spotify, Mercado Pago, Google Fonts e tiles do OSM) estão em `next.config.ts`.
