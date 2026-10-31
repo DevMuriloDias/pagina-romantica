@@ -9,6 +9,8 @@ Decisões que não estavam no documento original. Regra seguida: a opção mais 
 - **Provedor de pagamentos simulado (`PAYMENTS_PROVIDER=mock`)**: o Pix do sandbox do MP não pode ser pago automaticamente, então o E2E e o desenvolvimento usam um simulador que dispara o **mesmo** webhook com `x-signature` válida. A lógica de liberação é a mesma de produção.
 - **Storage local (`STORAGE_DRIVER=local`)** para dev/testes, simulando a URL pré-assinada com assinatura HMAC.
 
+- **Upload direto via URL pré-assinada PUT** (não POST de formulário): o Cloudflare R2 não implementa o `PostObject` do S3. Tipo e tamanho entram na assinatura, e o servidor revalida o arquivo real ao concluir.
+
 ## Conteúdo e editor
 - Conteúdo e tema em JSON separados (`Page.content` versionado com `schemaVersion`; `Page.theme` com design tokens). Overrides de estilo ficam em cada seção (`section.style`), por isso trocar de template nunca apaga conteúdo nem os ajustes por seção.
 - **Música, efeitos de fundo, tela de entrada e QR Code são globais** (não seções): fazem sentido uma vez por página.

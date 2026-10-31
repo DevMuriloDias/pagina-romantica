@@ -23,7 +23,7 @@ export const POST = route(async (req: Request) => {
   if (count >= MAX_ASSETS_PER_PAGE) throw new ApiError(400, "Limite de fotos enviadas para esta página atingido.", "too_many_assets");
   const assetId = uid("a");
   const key = `pages/${page.id}/raw/${assetId}`;
-  const upload = await presignUpload(key, body.contentType);
+  const upload = await presignUpload(key, body.contentType, body.size);
   await db.asset.create({ data: { id: assetId, pageId: page.id, key, url: "", mime: body.contentType, size: body.size, status: "PENDING" } });
   return json({ assetId, upload });
 });

@@ -1,6 +1,6 @@
 import "server-only";
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { hmac, safeEqual } from "./crypto";
@@ -51,25 +51,25 @@ export function verifyLocalUpload(key: string, contentType: string, exp: number,
   return exp > Date.now() / 1000 && safeEqual(sig, localUploadSignature(key, contentType, exp));
 }
 
-/** URL pré-assinada para upload direto do navegador (o arquivo não passa pelo nosso servidor). */
-export async function presignUpload(key: string, contentType: string): Promise<UploadTarget> {
+/**
+ * URL pré-assinada (PUT) para upload direto do navegador — o arquivo não passa pelo nosso servidor.
+ * Usamos PUT porque o Cloudflare R2 não implementa o POST de formulário do S3.
+ * Tipo e tamanho entram na assinatura: o storage recusa um envio diferente do declarado.
+ */
+export async function presignUpload(key: string, contentType: string, size: number): Promise<UploadTarget> {
   safeKey(key);
+  if (size <= 0 || size > MAX_UPLOAD_BYTES) throw new Error("Tamanho de arquivo inválido");
   if (isLocal()) {
     const exp = Math.floor(Date.now() / 1000) + 600;
     const qs = new URLSearchParams({ key, ct: contentType, exp: String(exp), sig: localUploadSignature(key, contentType, exp) });
     return { kind: "put", url: `/api/uploads/local?${qs}`, headers: { "Content-Type": contentType } };
   }
-  const { url, fields } = await createPresignedPost(client(), {
-    Bucket: env().S3_BUCKET!,
-    Key: key,
-    Conditions: [
-      ["content-length-range", 1, MAX_UPLOAD_BYTES],
-      ["eq", "$Content-Type", contentType],
-    ],
-    Fields: { "Content-Type": contentType },
-    Expires: 600,
-  });
-  return { kind: "post", url, fields };
+  const url = await getSignedUrl(
+    client(),
+    new PutObjectCommand({ Bucket: env().S3_BUCKET!, Key: key, ContentType: contentType, ContentLength: size }),
+    { expiresIn: 600, signableHeaders: new Set(["content-type", "content-length"]) },
+  );
+  return { kind: "put", url, headers: { "Content-Type": contentType } };
 }
 
 export async function getObject(key: string): Promise<Buffer | null> {

@@ -137,14 +137,14 @@ Em produção, troque para as credenciais de produção e cadastre o webhook no 
 
 ## Armazenamento de fotos (R2/S3)
 
-As fotos são comprimidas e convertidas para WebP **no navegador**, enviadas **direto ao bucket** via *presigned POST* (com limite de tamanho e tipo) e, em seguida, o servidor baixa o arquivo, valida o conteúdo real com `sharp`, **remove EXIF/GPS**, gera o WebP final e apaga o original.
+As fotos são comprimidas e convertidas para WebP **no navegador**, enviadas **direto ao bucket** via URL pré-assinada *PUT* (tipo e tamanho fazem parte da assinatura; o R2 não aceita o *presigned POST*) e, em seguida, o servidor baixa o arquivo, valida o conteúdo real com `sharp`, **remove EXIF/GPS**, gera o WebP final e apaga o original.
 
 Cloudflare R2:
 1. Crie o bucket e um *API token* com permissão de leitura/escrita → `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com`, `S3_REGION=auto`.
 2. Habilite acesso público (domínio próprio ou `r2.dev`) → `S3_PUBLIC_URL`.
 3. Configure o **CORS** do bucket (necessário para o upload direto, o recorte e a extração de paleta):
    ```json
-   [{ "AllowedOrigins": ["https://seudominio.com.br", "http://localhost:3000"], "AllowedMethods": ["GET", "POST", "PUT"], "AllowedHeaders": ["*"], "MaxAgeSeconds": 3600 }]
+   [{ "AllowedOrigins": ["https://seudominio.com.br", "http://localhost:3000"], "AllowedMethods": ["GET", "PUT"], "AllowedHeaders": ["Content-Type"], "MaxAgeSeconds": 3600 }]
    ```
 
 ## E-mails (Resend)
