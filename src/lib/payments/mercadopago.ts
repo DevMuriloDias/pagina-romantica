@@ -106,6 +106,9 @@ export const mercadoPago: PaymentProvider = {
         external_reference: input.externalReference,
         notification_url: input.notificationUrl,
         statement_descriptor: "AVELOVE",
+        // Modo binário: o cartão é aprovado ou recusado na hora, nunca fica "em análise"
+        // por dias. Para um presente digital é melhor recusar e o cliente tentar Pix/outro cartão.
+        binary_mode: true,
         payer: input.payer,
       }),
     });

@@ -42,6 +42,8 @@ Decisões que não estavam no documento original. Regra seguida: a opção mais 
 - A tela de pagamento consulta o provedor diretamente a cada 15 s enquanto pendente (além do webhook e do cron) — cobre ambientes sem URL pública.
 - SSE com fechamento após ~280 s; o cliente cai para polling de 3 s se o stream cair.
 
+- **Cartão em modo binário** (`binary_mode: true`): aprovado ou recusado na hora, sem pagamentos “em análise” por até 2 dias úteis.
+
 ## Página pública
 - Metadados e imagem OG **genéricos** (“Uma surpresa para você”), nas cores do tema, sem nomes nem fotos.
 - Vídeo do YouTube com fachada (carrega o iframe só no clique) para manter a performance.
