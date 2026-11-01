@@ -6,8 +6,8 @@ export default function PrivacyPage() {
   return (
     <>
       <h1>Política de Privacidade</h1>
-      <p>Última atualização: [DATA]</p>
-      <p>Esta Política explica como o {BRAND.name} ([RAZÃO SOCIAL], CNPJ [CNPJ]) trata dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD).</p>
+      <p>Última atualização: 1º de novembro de 2026</p>
+      <p>Esta Política explica como o {BRAND.name} (Murilo Rafael Dias Ferreira, CPF 098.855.649-93) trata dados pessoais, em conformidade com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD).</p>
       <h2>1. Dados que coletamos</h2>
       <ul>
         <li><strong>E-mail</strong>: informado no pagamento, para enviar o link da página, o link de edição e avisos (ex.: “sua página foi aberta”).</li>
@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         <li>Cumprimento de obrigações legais e fiscais.</li>
       </ul>
       <h2>4. Compartilhamento</h2>
-      <p>Com operadores necessários ao serviço: Mercado Pago (pagamentos), Resend (e-mails), provedor de armazenamento [Cloudflare R2/AWS S3] e provedor de hospedagem [PROVEDOR].</p>
+      <p>Com operadores necessários ao serviço: Mercado Pago (pagamentos), Resend (e-mails), Cloudflare (armazenamento das fotos e DNS), Vercel (hospedagem) e Neon (banco de dados).</p>
       <h2>5. Retenção</h2>
       <ul>
         <li>Rascunhos não pagos e suas fotos são apagados automaticamente após 30 dias.</li>
@@ -33,7 +33,7 @@ export default function PrivacyPage() {
       <h2>6. Seus direitos</h2>
       <p>Você pode acessar, corrigir e excluir seus dados. A exclusão da página e de todas as fotos pode ser feita pelo próprio editor (link de edição → Configurações → Excluir página). Para outros pedidos, escreva para {BRAND.supportEmail}.</p>
       <h2>7. Encarregado (DPO)</h2>
-      <p>[NOME DO ENCARREGADO] — [E-MAIL DO DPO]</p>
+      <p>Murilo Rafael Dias Ferreira — {BRAND.supportEmail}</p>
     </>
   );
 }
