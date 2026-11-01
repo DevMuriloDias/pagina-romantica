@@ -15,7 +15,7 @@ export const maxDuration = 30;
 /** Dados vindos do Card Payment Brick: só o token — o número do cartão nunca chega aqui. */
 const CardSchema = CheckoutBase.and(
   z.object({
-    deviceId: z.string().max(200).optional(),
+    deviceId: z.string().max(2000).optional(),
     card: z.object({
       token: z.string().min(4).max(200),
       payment_method_id: z.string().min(2).max(40),
