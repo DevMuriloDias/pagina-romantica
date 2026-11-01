@@ -2,7 +2,7 @@ import Link from "next/link";
 import { HeroDemo } from "@/components/site/HeroDemo";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteHeader";
 import { Button } from "@/components/ui/button";
-import { activeTemplates, cheapestPriceCents } from "@/lib/catalog";
+import { activeTemplates, pricingSummary } from "@/lib/catalog";
 import { formatBRL } from "@/lib/format";
 import { fontStack, googleFontsUrl } from "@/lib/theme/fonts";
 import { gradientCss } from "@/lib/theme/css";
@@ -33,10 +33,10 @@ const TESTIMONIALS = [
 ];
 
 export default async function HomePage() {
-  const [templates, cheapest] = await Promise.all([activeTemplates(), cheapestPriceCents()]);
+  const [templates, { cheapest, count: planCount }] = await Promise.all([activeTemplates(), pricingSummary()]);
   const faq = [
     ["Preciso criar conta ou senha?", "Não. Você cria a página sem cadastro — tudo é salvo automaticamente neste navegador. Só pedimos seu e-mail no pagamento, para enviar o link da página e o seu link de edição."],
-    ["Quanto custa?", cheapest !== null ? `É pagamento único, a partir de ${formatBRL(cheapest)}. Você só vê o valor final no fim, depois de montar e revisar tudo.` : "É pagamento único. Você vê o valor no final, depois de montar e revisar tudo."],
+    ["Quanto custa?", cheapest !== null ? `É pagamento único${planCount > 1 ? ", a partir de" : " de"} ${formatBRL(cheapest)}. Você só vê o valor final no fim, depois de montar e revisar tudo.` : "É pagamento único. Você vê o valor no final, depois de montar e revisar tudo."],
     ["Como meu amor recebe a página?", "Assim que o pagamento é aprovado, o link aparece na sua tela e chega no seu e-mail, junto com um QR Code para imprimir. Você manda como quiser: WhatsApp, cartão, presente..."],
     ["Posso editar depois de pagar?", "Pode! O e-mail de confirmação traz um link mágico de edição. E em “Minhas páginas” você acessa tudo só com o seu e-mail."],
     ["Quais formas de pagamento?", "Pix (aprovação na hora) e cartão de crédito, com parcelamento. O pagamento é processado pelo Mercado Pago — seus dados de cartão nunca passam pelos nossos servidores."],

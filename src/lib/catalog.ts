@@ -16,11 +16,12 @@ export async function activeTemplates(): Promise<TemplateDef[]> {
   }
 }
 
-export async function cheapestPriceCents(): Promise<number | null> {
+/** Preço do plano mais barato e quantos planos ativos existem (para o texto do FAQ). */
+export async function pricingSummary(): Promise<{ cheapest: number | null; count: number }> {
   try {
-    const p = await db.plan.findFirst({ where: { active: true }, orderBy: { priceCents: "asc" }, select: { priceCents: true } });
-    return p?.priceCents ?? null;
+    const plans = await db.plan.findMany({ where: { active: true }, select: { priceCents: true } });
+    return { cheapest: plans.length ? Math.min(...plans.map((p) => p.priceCents)) : null, count: plans.length };
   } catch {
-    return null;
+    return { cheapest: null, count: 0 };
   }
 }

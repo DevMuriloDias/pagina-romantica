@@ -53,7 +53,7 @@ export function LettersEditor({ section, update }: EditorProps<"letters">) {
         { id: uid("l"), kind, openWhen: kind === "open_when" ? "estiver com saudade" : "", title: kind === "open_when" ? "Abra quando estiver com saudade" : "Uma carta para você", body: "", signature: meta.senderName ? `Com amor, ${meta.senderName}` : "", paper: "lined", font: "dancing", lockedUntil: "" },
       ],
     }));
-  const overBase = plans.baseLetters !== null && d.letters.length > plans.baseLetters;
+  const overBase = !plans.singlePlan && plans.baseLetters !== null && d.letters.length > plans.baseLetters;
 
   return (
     <div className="space-y-4">
@@ -167,8 +167,14 @@ export function PhotosEditor({ section, update }: EditorProps<"photos">) {
         ) : null}
       </div>
       <p className="text-xs text-ink-soft">
-        {totalPhotos} foto(s) na página · {plans.basePlanName}: até {plans.basePhotos} · {plans.topPlanName}: até {plans.topPhotos}.
-        {totalPhotos > plans.basePhotos ? <Badge tone="premium" className="ml-1">Premium</Badge> : null}
+        {plans.singlePlan ? (
+          <>{totalPhotos} de até {plans.topPhotos} foto(s) na página.</>
+        ) : (
+          <>
+            {totalPhotos} foto(s) na página · {plans.basePlanName}: até {plans.basePhotos} · {plans.topPlanName}: até {plans.topPhotos}.
+            {totalPhotos > plans.basePhotos ? <Badge tone="premium" className="ml-1">Premium</Badge> : null}
+          </>
+        )}
       </p>
       {error ? <Alert tone="danger">{error}</Alert> : null}
       {d.photos.length === 0 ? (

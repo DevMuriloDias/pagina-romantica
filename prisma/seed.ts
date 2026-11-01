@@ -30,8 +30,11 @@ async function main() {
       limits: { maxPhotos: 50, maxLetters: null, sections: "all", durationDays: null, customSlug: true, music: true, removeBranding: false },
     },
   ];
-  for (const p of plans) {
-    await db.plan.upsert({ where: { slug: p.slug }, update: {}, create: p });
+  // Planos e cupom de exemplo só no primeiro seed (banco vazio). Depois disso, o admin
+  // é a fonte da verdade: o seed roda a cada deploy e não pode recriar o que foi alterado.
+  const firstRun = (await db.plan.count()) === 0;
+  if (firstRun) {
+    for (const p of plans) await db.plan.create({ data: p });
   }
 
   for (const [i, t] of TEMPLATES.entries()) {
@@ -42,11 +45,13 @@ async function main() {
     });
   }
 
-  await db.coupon.upsert({
-    where: { code: "BEMVINDO10" },
-    update: {},
-    create: { code: "BEMVINDO10", type: "PERCENT", value: 10, maxUses: 1000 },
-  });
+  if (firstRun) {
+    await db.coupon.upsert({
+      where: { code: "BEMVINDO10" },
+      update: {},
+      create: { code: "BEMVINDO10", type: "PERCENT", value: 10, maxUses: 1000 },
+    });
+  }
 
   const email = (process.env.ADMIN_EMAIL ?? "admin@example.com").trim().toLowerCase();
   const envPassword = process.env.ADMIN_PASSWORD?.trim();
@@ -58,7 +63,7 @@ async function main() {
     create: { email, name: "Admin", passwordHash },
   });
 
-  console.log(`Seed concluído: ${plans.length} planos (preços PLACEHOLDER), ${TEMPLATES.length} templates, cupom BEMVINDO10, admin ${email}.`);
+  console.log(`Seed concluído: ${firstRun ? `${plans.length} planos criados (preços PLACEHOLDER)` : "planos mantidos (editáveis no admin)"}, ${TEMPLATES.length} templates, cupom BEMVINDO10, admin ${email}.`);
 }
 
 main()

@@ -16,5 +16,6 @@ export async function plansInfoForBuilder() {
     basePhotos: baseLimits?.maxPhotos ?? 10,
     topPhotos: topLimits?.maxPhotos ?? 50,
     baseLetters: baseLimits ? baseLimits.maxLetters : 3,
+    singlePlan: plans.length === 1,
   };
 }
