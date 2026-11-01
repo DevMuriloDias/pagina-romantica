@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { env } from "./env";
 import { PlanLimitsSchema, premiumSections } from "./plans";
 
 /** Informações de planos para o editor — SEM preços (o valor só aparece no checkout). */
@@ -17,5 +18,6 @@ export async function plansInfoForBuilder() {
     topPhotos: topLimits?.maxPhotos ?? 50,
     baseLetters: baseLimits ? baseLimits.maxLetters : 3,
     singlePlan: plans.length === 1,
+    aiEnabled: Boolean(env().ANTHROPIC_API_KEY),
   };
 }

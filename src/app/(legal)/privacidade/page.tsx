@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         <li>Cumprimento de obrigações legais e fiscais.</li>
       </ul>
       <h2>4. Compartilhamento</h2>
-      <p>Com operadores necessários ao serviço: Mercado Pago (pagamentos), Resend (e-mails), provedor de armazenamento [Cloudflare R2/AWS S3], Anthropic (geração de textos por IA, quando você usa esse recurso) e provedor de hospedagem [PROVEDOR].</p>
+      <p>Com operadores necessários ao serviço: Mercado Pago (pagamentos), Resend (e-mails), provedor de armazenamento [Cloudflare R2/AWS S3] e provedor de hospedagem [PROVEDOR].</p>
       <h2>5. Retenção</h2>
       <ul>
         <li>Rascunhos não pagos e suas fotos são apagados automaticamente após 30 dias.</li>

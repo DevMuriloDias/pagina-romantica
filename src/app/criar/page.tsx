@@ -1,5 +1,6 @@
 import { Questionnaire } from "@/components/wizard/Questionnaire";
 import { activeTemplates } from "@/lib/catalog";
+import { env } from "@/lib/env";
 import { currentDraftId, getEditablePage } from "@/lib/pages/access";
 import { pageView } from "@/lib/pages/service";
 
@@ -21,5 +22,5 @@ export default async function CreatePage({ searchParams }: { searchParams: Promi
     }
   }
   const initialTemplate = templates.some((t) => t.id === sp.modelo) ? sp.modelo : undefined;
-  return <Questionnaire templates={templates} initialTemplate={initialTemplate} existing={existing} />;
+  return <Questionnaire templates={templates} initialTemplate={initialTemplate} existing={existing} aiEnabled={Boolean(env().ANTHROPIC_API_KEY)} />;
 }

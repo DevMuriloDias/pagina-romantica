@@ -3,15 +3,18 @@ import { HeroDemo } from "@/components/site/HeroDemo";
 import { SiteFooter, SiteHeader } from "@/components/site/SiteHeader";
 import { Button } from "@/components/ui/button";
 import { activeTemplates, pricingSummary } from "@/lib/catalog";
+import { env } from "@/lib/env";
 import { formatBRL } from "@/lib/format";
 import { fontStack, googleFontsUrl } from "@/lib/theme/fonts";
 import { gradientCss } from "@/lib/theme/css";
 
 export const revalidate = 300;
 
-const STEPS = [
+const stepsFor = (ai: boolean) => [
   { n: "01", title: "Conte a história de vocês", text: "Responda perguntinhas rápidas: como se conheceram, lembranças, apelidos. Pode pular o que quiser.", hand: "leva 3 minutos" },
-  { n: "02", title: "A IA escreve o primeiro rascunho", text: "Cartas, motivos, linha do tempo e quiz prontos. Depois você edita tudo com prévia ao vivo.", hand: "e você deixa com a sua cara" },
+  ai
+    ? { n: "02", title: "A IA escreve o primeiro rascunho", text: "Cartas, motivos, linha do tempo e quiz prontos. Depois você edita tudo com prévia ao vivo.", hand: "e você deixa com a sua cara" }
+    : { n: "02", title: "A gente monta o primeiro rascunho", text: "Sua página já nasce com cartinhas, motivos e linha do tempo. Depois você edita tudo com prévia ao vivo.", hand: "e você deixa com a sua cara" },
   { n: "03", title: "Entregue a surpresa", text: "Receba o link e o QR Code na hora, por e-mail também. Mande no WhatsApp ou imprima num cartão.", hand: "e espere a reação 🥹" },
 ];
 
@@ -33,6 +36,8 @@ const TESTIMONIALS = [
 ];
 
 export default async function HomePage() {
+  const ai = Boolean(env().ANTHROPIC_API_KEY);
+  const STEPS = stepsFor(ai);
   const [templates, { cheapest, count: planCount }] = await Promise.all([activeTemplates(), pricingSummary()]);
   const faq = [
     ["Preciso criar conta ou senha?", "Não. Você cria a página sem cadastro — tudo é salvo automaticamente neste navegador. Só pedimos seu e-mail no pagamento, para enviar o link da página e o seu link de edição."],
@@ -55,7 +60,7 @@ export default async function HomePage() {
           <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 pb-20 pt-12 sm:px-6 lg:grid-cols-[1.1fr_1fr] lg:pt-20">
             <div>
               <p className="mb-5 inline-flex items-center gap-2 rounded-full border border-line bg-white/70 px-3 py-1 text-xs font-medium text-ink-soft">
-                <span className="size-1.5 rounded-full bg-rose" /> Pronta em minutos · com ajuda de IA · sem cadastro
+                <span className="size-1.5 rounded-full bg-rose" /> Pronta em minutos · {ai ? "com ajuda de IA · " : "100% personalizável · "}sem cadastro
               </p>
               <h1 className="font-display text-[2.6rem] leading-[1.02] tracking-tight text-ink sm:text-6xl lg:text-7xl" style={{ fontVariationSettings: '"SOFT" 100, "WONK" 1' }}>
                 Diga tudo o que sente.

@@ -58,7 +58,7 @@ export function LettersEditor({ section, update }: EditorProps<"letters">) {
   return (
     <div className="space-y-4">
       <TextField label="Título da seção" value={d.title} onChange={(v, k) => update((x) => ({ ...x, title: v }), k)} />
-      {d.letters.length === 0 ? <Alert tone="info">Nenhuma carta ainda. Que tal começar com uma carta principal? A IA pode te ajudar ✨</Alert> : null}
+      {d.letters.length === 0 ? <Alert tone="info">Nenhuma carta ainda. Que tal começar com uma carta principal? ✍️</Alert> : null}
       <SortableList
         items={d.letters}
         onReorder={(letters) => update((x) => ({ ...x, letters }))}
@@ -160,7 +160,7 @@ export function PhotosEditor({ section, update }: EditorProps<"photos">) {
       <ChoiceChips label="Como mostrar" value={d.layout} onChange={(v) => update((x) => ({ ...x, layout: v }))} options={PHOTO_LAYOUTS.map((l) => ({ ...l }))} />
       <div className="flex flex-wrap items-center gap-2">
         <UploadButton multiple onFiles={(files) => upload(files, addPhoto)} busy={progress ? `Enviando ${progress.done}/${progress.total}...` : null} />
-        {d.photos.length ? (
+        {d.photos.length && plans.aiEnabled ? (
           <Button type="button" variant="ghost" size="sm" onClick={suggestCaptions} disabled={aiBusy}>
             <Sparkles /> {aiBusy ? "Pensando..." : "Sugerir legendas"}
           </Button>
@@ -315,6 +315,7 @@ export function PlacesEditor({ section, update }: EditorProps<"places">) {
 
 export function ReasonsEditor({ section, update }: EditorProps<"reasons">) {
   const d = section.data;
+  const { aiEnabled } = usePlans();
   const pageId = useBuilder((s) => s.pageId);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -349,7 +350,7 @@ export function ReasonsEditor({ section, update }: EditorProps<"reasons">) {
       />
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => update((x) => ({ ...x, reasons: [...x.reasons, ""] }))}><Plus /> Motivo</Button>
-        <Button type="button" variant="soft" size="sm" onClick={suggest} disabled={busy}><Sparkles /> {busy ? "Pensando..." : "Sugerir motivos com IA"}</Button>
+        {aiEnabled ? <Button type="button" variant="soft" size="sm" onClick={suggest} disabled={busy}><Sparkles /> {busy ? "Pensando..." : "Sugerir motivos com IA"}</Button> : null}
       </div>
       {err ? <Alert tone="danger">{err}</Alert> : null}
     </div>
@@ -360,6 +361,7 @@ export function ReasonsEditor({ section, update }: EditorProps<"reasons">) {
 
 export function QuizEditor({ section, update }: EditorProps<"quiz">) {
   const d = section.data;
+  const { aiEnabled } = usePlans();
   const pageId = useBuilder((s) => s.pageId);
   const [busy, setBusy] = useState(false);
   type Q = (typeof d.questions)[number];
@@ -399,7 +401,7 @@ export function QuizEditor({ section, update }: EditorProps<"quiz">) {
       />
       <div className="flex flex-wrap gap-2">
         <Button type="button" variant="outline" size="sm" onClick={() => update((x) => ({ ...x, questions: [...x.questions, { id: uid("q"), question: "Nova pergunta", options: ["Opção A", "Opção B", "Opção C"], correctIndex: 0 }] }))}><Plus /> Pergunta</Button>
-        <Button type="button" variant="soft" size="sm" onClick={generate} disabled={busy}><Sparkles /> {busy ? "Criando..." : "Gerar perguntas com IA"}</Button>
+        {aiEnabled ? <Button type="button" variant="soft" size="sm" onClick={generate} disabled={busy}><Sparkles /> {busy ? "Criando..." : "Gerar perguntas com IA"}</Button> : null}
       </div>
       <TextField label="Resultado — acertou quase tudo" maxLength={240} value={d.resultHigh} onChange={(v, k) => update((x) => ({ ...x, resultHigh: v }), k)} />
       <TextField label="Resultado — acertou metade" maxLength={240} value={d.resultMid} onChange={(v, k) => update((x) => ({ ...x, resultMid: v }), k)} />

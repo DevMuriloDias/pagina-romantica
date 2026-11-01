@@ -36,7 +36,7 @@ const STEPS: StepId[] = ["names", "relationship", "occasion", "startDate", "howW
 
 const GENERATING = ["Lendo a história de vocês com carinho...", "Escolhendo as palavras certas...", "Escrevendo a carta principal...", "Separando os motivos pelos quais você ama...", "Montando a linha do tempo...", "Dando os últimos retoques ✨"];
 
-export function Questionnaire({ templates, initialTemplate, existing }: { templates: TemplateDef[]; initialTemplate?: string; existing: { id: string; label: string } | null }) {
+export function Questionnaire({ templates, initialTemplate, existing, aiEnabled = false }: { templates: TemplateDef[]; initialTemplate?: string; existing: { id: string; label: string } | null; aiEnabled?: boolean }) {
   const router = useRouter();
   const reduced = useReducedMotion();
   const [answers, setAnswers] = useState<Answers>(() => ({ ...EMPTY, templateId: initialTemplate ?? EMPTY.templateId }));
@@ -179,7 +179,7 @@ export function Questionnaire({ templates, initialTemplate, existing }: { templa
             transition={{ duration: 0.3 }}
             className="min-h-[340px]"
           >
-            <StepBody id={id} answers={answers} set={set} templates={templates} />
+            <StepBody id={id} answers={answers} set={set} templates={templates} aiEnabled={aiEnabled} />
           </motion.div>
         </AnimatePresence>
         {error ? <Alert tone="danger" className="mt-4">{error}</Alert> : null}
@@ -249,7 +249,7 @@ function Chips<T extends string>({ value, options, onChange }: { value: T; optio
 const REL_EMOJI: Record<string, string> = { namoro: "💑", noivado: "💍", casamento: "👰", ficante: "😏", pedido_namoro: "💘", pedido_casamento: "💎", aniversario_namoro: "🎂", reconciliacao: "🤝", amizade_colorida: "🌈", outro: "✨" };
 const OCC_EMOJI: Record<string, string> = { aniversario: "🎉", dia_dos_namorados: "🌹", mesversario: "📅", bodas: "🥂", so_porque_sim: "💖", pedido: "💍" };
 
-function StepBody({ id, answers, set, templates }: { id: StepId; answers: Answers; set: <K extends keyof Answers>(k: K, v: Answers[K]) => void; templates: TemplateDef[] }) {
+function StepBody({ id, answers, set, templates, aiEnabled }: { id: StepId; answers: Answers; set: <K extends keyof Answers>(k: K, v: Answers[K]) => void; templates: TemplateDef[]; aiEnabled: boolean }) {
   const to = answers.recipientName || "seu amor";
   switch (id) {
     case "names":
@@ -318,7 +318,7 @@ function StepBody({ id, answers, set, templates }: { id: StepId; answers: Answer
     case "tone":
       return (
         <>
-          <Q title="Qual o clima da página?" hint="A IA escreve no tom que você escolher." />
+          <Q title="Qual o clima da página?" hint={aiEnabled ? "A IA escreve no tom que você escolher." : "Os textos iniciais seguem esse clima — depois você escreve do seu jeito."} />
           <Chips value={answers.tone} onChange={(v) => set("tone", v)} options={TONES.map((t) => ({ value: t, label: TONE_LABELS[t].label, emoji: TONE_LABELS[t].emoji, hint: TONE_LABELS[t].hint }))} />
         </>
       );

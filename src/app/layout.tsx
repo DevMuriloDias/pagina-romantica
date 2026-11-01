@@ -10,7 +10,7 @@ const caveat = Caveat({ subsets: ["latin"], variable: "--font-caveat", display: 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL ?? "http://localhost:3000"),
   title: { default: `${BRAND.name} — páginas românticas personalizadas`, template: `%s · ${BRAND.name}` },
-  description: "Crie uma página romântica única para quem você ama: cartinhas, fotos, música, linha do tempo e surpresas. Pronta em minutos, com ajuda de IA.",
+  description: "Crie uma página romântica única para quem você ama: cartinhas, fotos, música, linha do tempo e surpresas. Pronta em minutos, sem cadastro.",
   openGraph: { type: "website", locale: "pt_BR", siteName: BRAND.name },
 };
 

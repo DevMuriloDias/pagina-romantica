@@ -11,6 +11,7 @@ import { streamText } from "@/lib/client/api";
 import { normalizeHex, contrastLevel } from "@/lib/theme/color";
 import { cn } from "@/lib/utils";
 import { useBuilder } from "@/stores/builder";
+import { usePlans } from "./plans-context";
 
 // ───────────── Texto com IA ─────────────
 
@@ -48,6 +49,7 @@ export function AiTextArea({
 }) {
   const id = useId();
   const pageId = useBuilder((s) => s.pageId);
+  const { aiEnabled } = usePlans();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [menu, setMenu] = useState(false);
@@ -77,7 +79,7 @@ export function AiTextArea({
       htmlFor={id}
       className={className}
       aside={
-        <div className="relative flex items-center gap-1">
+        !aiEnabled ? null : <div className="relative flex items-center gap-1">
           {write ? (
             <Button type="button" variant="soft" size="sm" onClick={() => run("write")} disabled={Boolean(busy)}>
               <Sparkles /> Escrever com IA

@@ -18,8 +18,8 @@ export default function TermsPage() {
         <li>É proibido publicar conteúdo sexual explícito, ilegal, ofensivo, discriminatório, que viole direitos de terceiros ou que envolva menores de idade de forma inadequada.</li>
         <li>Podemos despublicar Páginas que violem estes Termos, especialmente após denúncias, sem direito a reembolso em caso de violação.</li>
       </ul>
-      <h2>3. Inteligência artificial</h2>
-      <p>Textos sugeridos pela IA são um ponto de partida. Revise tudo antes de publicar; você é o(a) autor(a) final da Página.</p>
+      <h2>3. Textos sugeridos</h2>
+      <p>Os textos iniciais sugeridos pelo {BRAND.name} são um ponto de partida. Revise tudo antes de publicar; você é o(a) autor(a) final da Página.</p>
       <h2>4. Pagamento, validade e reembolso</h2>
       <ul>
         <li>O pagamento é único, processado pelo Mercado Pago. O valor é exibido antes da confirmação.</li>
