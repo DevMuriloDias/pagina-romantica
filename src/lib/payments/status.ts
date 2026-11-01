@@ -43,3 +43,9 @@ export function friendlyStatusMessage(statusDetail: string | null | undefined): 
   if (!statusDetail) return "Não foi possível concluir o pagamento. Tente novamente ou use Pix.";
   return REJECTIONS[statusDetail] ?? "Não foi possível concluir o pagamento. Tente novamente ou use Pix.";
 }
+
+/** Motivo do erro do provedor, guardado no pedido para o admin ver (curto, sem dados sensíveis). */
+export function providerErrorDetail(err: unknown): string {
+  const msg = err instanceof Error ? err.message.replace(/^Mercado Pago:\s*/, "") : String(err);
+  return `provider_error: ${msg}`.slice(0, 180);
+}

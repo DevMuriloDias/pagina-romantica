@@ -59,7 +59,9 @@ async function call(path: string, init: RequestInit & { idempotencyKey?: string 
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     log.warn("mercadopago.http_error", { path, status: res.status, body });
-    const message = (body as { message?: string }).message ?? `HTTP ${res.status}`;
+    const b = body as { message?: string; error?: string; cause?: { code?: string | number; description?: string }[] };
+    const cause = b.cause?.map((c) => [c.code, c.description].filter(Boolean).join(" ")).join("; ");
+    const message = [b.message ?? b.error ?? `HTTP ${res.status}`, cause].filter(Boolean).join(" — ");
     const err = new Error(`Mercado Pago: ${message}`) as Error & { status?: number; body?: unknown };
     err.status = res.status;
     err.body = body;

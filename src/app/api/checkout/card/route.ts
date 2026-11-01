@@ -7,7 +7,7 @@ import { requireEditablePage } from "@/lib/pages/access";
 import { paymentProvider } from "@/lib/payments";
 import { CheckoutBase, notificationUrl, paymentDescription, prepareOrder } from "@/lib/payments/checkout";
 import { syncOrderWithPayment } from "@/lib/payments/fulfill";
-import { friendlyStatusMessage } from "@/lib/payments/status";
+import { friendlyStatusMessage, providerErrorDetail } from "@/lib/payments/status";
 import { LIMITS } from "@/lib/ratelimit";
 
 export const maxDuration = 30;
@@ -52,7 +52,7 @@ export const POST = route(async (req: Request) => {
     });
   } catch (err) {
     log.error("checkout.card_error", { orderId: order.id, err });
-    await db.order.update({ where: { id: order.id }, data: { status: "REJECTED", statusDetail: "provider_error" } });
+    await db.order.update({ where: { id: order.id }, data: { status: "REJECTED", statusDetail: providerErrorDetail(err) } });
     await db.page.updateMany({ where: { id: page.id, status: "PENDING_PAYMENT" }, data: { status: "DRAFT" } });
     throw new ApiError(502, "Não conseguimos processar o cartão agora. Tente de novo ou pague com Pix.", "provider_error");
   }

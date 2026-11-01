@@ -4,6 +4,7 @@ import { sendEmail } from "@/lib/email";
 import { appUrl, env } from "@/lib/env";
 import { formatBRL, formatDateTime } from "@/lib/format";
 import { log } from "@/lib/log";
+import { providerErrorDetail } from "@/lib/payments/status";
 import { requireEditablePage } from "@/lib/pages/access";
 import { paymentProvider } from "@/lib/payments";
 import { CheckoutBase, notificationUrl, paymentDescription, prepareOrder } from "@/lib/payments/checkout";
@@ -33,7 +34,7 @@ export const POST = route(async (req: Request) => {
     });
   } catch (err) {
     log.error("checkout.pix_error", { orderId: order.id, err });
-    await db.order.update({ where: { id: order.id }, data: { status: "CANCELLED", statusDetail: "provider_error" } });
+    await db.order.update({ where: { id: order.id }, data: { status: "CANCELLED", statusDetail: providerErrorDetail(err) } });
     throw new ApiError(502, "Não conseguimos gerar o Pix agora. Tente novamente em instantes.", "provider_error");
   }
 
