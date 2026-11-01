@@ -42,7 +42,7 @@ function toPayment(raw: unknown): ProviderPayment {
   };
 }
 
-async function call(path: string, init: RequestInit & { idempotencyKey?: string } = {}): Promise<unknown> {
+async function call(path: string, init: RequestInit & { idempotencyKey?: string; deviceId?: string } = {}): Promise<unknown> {
   const token = env().MP_ACCESS_TOKEN;
   if (!token) throw new Error("MP_ACCESS_TOKEN não configurado");
   const res = await fetch(`${API}${path}`, {
@@ -51,6 +51,8 @@ async function call(path: string, init: RequestInit & { idempotencyKey?: string 
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...(init.idempotencyKey ? { "X-Idempotency-Key": init.idempotencyKey } : {}),
+      // Device ID do comprador: usado pelo antifraude do Mercado Pago (recomendação oficial).
+      ...(init.deviceId ? { "X-meli-session-id": init.deviceId } : {}),
       ...init.headers,
     },
     cache: "no-store",
@@ -98,6 +100,7 @@ export const mercadoPago: PaymentProvider = {
     const body = await call("/v1/payments", {
       method: "POST",
       idempotencyKey: input.idempotencyKey,
+      deviceId: input.deviceId,
       body: JSON.stringify({
         transaction_amount: input.amountCents / 100,
         description: input.description,
@@ -110,6 +113,20 @@ export const mercadoPago: PaymentProvider = {
         statement_descriptor: "AVELOVE",
         // Modo binário: o cartão é aprovado ou recusado na hora, nunca fica "em análise"
         // por dias. Para um presente digital é melhor recusar e o cliente tentar Pix/outro cartão.
+        additional_info: input.item
+          ? {
+              items: [
+                {
+                  id: input.item.id,
+                  title: input.item.title,
+                  description: input.item.description,
+                  category_id: "services",
+                  quantity: 1,
+                  unit_price: input.amountCents / 100,
+                },
+              ],
+            }
+          : undefined,
         binary_mode: true,
         payer: input.payer,
       }),

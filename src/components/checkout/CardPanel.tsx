@@ -1,5 +1,6 @@
 "use client";
 import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
+import Script from "next/script";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, NativeSelect } from "@/components/ui/input";
@@ -36,6 +37,8 @@ export function CardPanel({ amountCents, maxInstallments, publicKey, onSubmit, d
   if (!ready) return null;
   return (
     <div className={disabled ? "pointer-events-none opacity-50" : undefined}>
+      {/* Script oficial de antifraude: gera window.MP_DEVICE_SESSION_ID (enviado ao criar o pagamento) */}
+      <Script src="https://www.mercadopago.com/v2/security.js" strategy="afterInteractive" data-view="checkout" />
       <MercadoPagoBrick amountCents={amountCents} maxInstallments={maxInstallments} submitRef={submitRef} />
     </div>
   );

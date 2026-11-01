@@ -99,7 +99,10 @@ export function CheckoutView({ pageId, recipientName, initialOrderId, initialEma
     setCardMsg(null);
     setError(null);
     try {
-      const r = await api<{ orderId: string; status: OrderView["status"]; message: string }>("/api/checkout/card", { body: { ...base(), card } });
+      const r = await api<{ orderId: string; status: OrderView["status"]; message: string }>("/api/checkout/card", {
+        // device ID gerado pelo SDK do Mercado Pago (antifraude)
+        body: { ...base(), card, deviceId: (window as unknown as { MP_DEVICE_SESSION_ID?: string }).MP_DEVICE_SESSION_ID },
+      });
       setOrderId(r.orderId);
       if (r.status !== "APPROVED") setCardMsg(r.message);
     } catch (err) {

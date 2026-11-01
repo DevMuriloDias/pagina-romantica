@@ -15,6 +15,7 @@ export const maxDuration = 30;
 /** Dados vindos do Card Payment Brick: só o token — o número do cartão nunca chega aqui. */
 const CardSchema = CheckoutBase.and(
   z.object({
+    deviceId: z.string().max(200).optional(),
     card: z.object({
       token: z.string().min(4).max(200),
       payment_method_id: z.string().min(2).max(40),
@@ -49,6 +50,8 @@ export const POST = route(async (req: Request) => {
       idempotencyKey: order.idempotencyKey,
       externalReference: order.id,
       notificationUrl: notificationUrl(),
+      deviceId: input.deviceId,
+      item: { id: quote.plan.slug, title: `Página romântica — plano ${quote.plan.name}`, description: "Página romântica personalizada (produto digital)" },
     });
   } catch (err) {
     log.error("checkout.card_error", { orderId: order.id, err });

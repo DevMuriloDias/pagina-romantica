@@ -42,6 +42,10 @@ export interface CreateCardInput {
   idempotencyKey: string;
   externalReference: string;
   notificationUrl?: string;
+  /** ID do aparelho gerado pelo SDK do Mercado Pago (antifraude). */
+  deviceId?: string;
+  /** Item vendido (melhora a aprovação no antifraude). */
+  item?: { id: string; title: string; description: string };
 }
 
 export interface PaymentProvider {
