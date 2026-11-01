@@ -225,7 +225,7 @@ export function CheckoutView({ pageId, recipientName, initialOrderId, initialEma
                 {formError ? <Alert tone="info">{formError}</Alert> : null}
                 {view?.method === "CARD" && view.status === "PENDING" ? <Alert tone="info"><Spinner className="mr-2" /> Pagamento em análise. Você pode fechar esta tela: avisamos por e-mail.</Alert> : null}
                 {cardMsg ? <Alert tone="warning">{cardMsg}</Alert> : null}
-                <CardPanel amountCents={quote.totalCents} maxInstallments={quote.maxInstallments} publicKey={quote.provider === "mercadopago" ? quote.publicKey : null} email={email} onSubmit={payCard} disabled={Boolean(formError)} />
+                <CardPanel amountCents={quote.totalCents} maxInstallments={quote.maxInstallments} publicKey={quote.provider === "mercadopago" ? quote.publicKey : null} onSubmit={payCard} disabled={Boolean(formError)} />
               </div>
             ) : null}
           </section>

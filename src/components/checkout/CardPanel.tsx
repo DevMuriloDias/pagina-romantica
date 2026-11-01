@@ -1,6 +1,6 @@
 "use client";
 import { CardPayment, initMercadoPago } from "@mercadopago/sdk-react";
-import { useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input, NativeSelect } from "@/components/ui/input";
 
@@ -18,8 +18,12 @@ let initialized: string | null = null;
  * Cartão via Card Payment Brick do Mercado Pago: os dados do cartão são tokenizados
  * no navegador e nunca passam pelo nosso servidor.
  */
-export function CardPanel({ amountCents, maxInstallments, publicKey, email, onSubmit, disabled }: { amountCents: number; maxInstallments: number; publicKey: string | null; email: string; onSubmit: (d: CardData) => Promise<void>; disabled?: boolean }) {
+export function CardPanel({ amountCents, maxInstallments, publicKey, onSubmit, disabled }: { amountCents: number; maxInstallments: number; publicKey: string | null; onSubmit: (d: CardData) => Promise<void>; disabled?: boolean }) {
   const [ready, setReady] = useState(false);
+  // A função de envio muda a cada render da página; guardamos numa ref para o Brick não ser recriado.
+  const submitRef = useRef(onSubmit);
+  submitRef.current = onSubmit;
+
   useEffect(() => {
     if (publicKey && initialized !== publicKey) {
       initMercadoPago(publicKey, { locale: "pt-BR" });
@@ -32,24 +36,45 @@ export function CardPanel({ amountCents, maxInstallments, publicKey, email, onSu
   if (!ready) return null;
   return (
     <div className={disabled ? "pointer-events-none opacity-50" : undefined}>
-      <CardPayment
-        key={amountCents}
-        locale="pt-BR"
-        initialization={{ amount: amountCents / 100, payer: { email } }}
-        customization={{ paymentMethods: { maxInstallments, minInstallments: 1 }, visual: { style: { theme: "default" } } }}
-        onSubmit={async (formData) => {
-          await onSubmit({
-            token: formData.token,
-            payment_method_id: formData.payment_method_id,
-            issuer_id: formData.issuer_id ? String(formData.issuer_id) : undefined,
-            installments: Number(formData.installments),
-            payer: { email: formData.payer?.email, identification: formData.payer?.identification as CardData["payer"]["identification"] },
-          });
-        }}
-      />
+      <MercadoPagoBrick amountCents={amountCents} maxInstallments={maxInstallments} submitRef={submitRef} />
     </div>
   );
 }
+
+/**
+ * O Brick só pode ser montado uma vez por valor: recriá-lo a cada render (ex.: ao digitar o e-mail)
+ * quebra a inicialização do Mercado Pago ("removeChild ... not of type Node").
+ * Por isso as props são estáveis (memo) e o e-mail NÃO é passado ao Brick — o servidor o envia.
+ */
+const MercadoPagoBrick = memo(function MercadoPagoBrick({
+  amountCents,
+  maxInstallments,
+  submitRef,
+}: {
+  amountCents: number;
+  maxInstallments: number;
+  submitRef: React.RefObject<(d: CardData) => Promise<void>>;
+}) {
+  const initialization = useMemo(() => ({ amount: amountCents / 100 }), [amountCents]);
+  const customization = useMemo(
+    () => ({ paymentMethods: { maxInstallments, minInstallments: 1 }, visual: { style: { theme: "default" as const } } }),
+    [maxInstallments],
+  );
+  const handleSubmit = useCallback(
+    async (formData: { token: string; payment_method_id: string; issuer_id?: string | number; installments: number | string; payer?: { email?: string; identification?: unknown } }) => {
+      await submitRef.current({
+        token: formData.token,
+        payment_method_id: formData.payment_method_id,
+        issuer_id: formData.issuer_id ? String(formData.issuer_id) : undefined,
+        installments: Number(formData.installments),
+        payer: { identification: formData.payer?.identification as CardData["payer"]["identification"] },
+      });
+    },
+    [submitRef],
+  );
+  const handleError = useCallback((err: unknown) => console.error("Mercado Pago Brick:", err), []);
+  return <CardPayment key={amountCents} locale="pt-BR" initialization={initialization} customization={customization} onSubmit={handleSubmit as never} onError={handleError as never} />;
+});
 
 /** Formulário simulado (PAYMENTS_PROVIDER=mock): titular "APRO" aprova, "OTHE" recusa, "CONT" fica pendente. */
 function MockCardForm({ amountCents, maxInstallments, onSubmit, disabled }: { amountCents: number; maxInstallments: number; onSubmit: (d: CardData) => Promise<void>; disabled?: boolean }) {
