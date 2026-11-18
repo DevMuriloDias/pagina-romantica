@@ -168,7 +168,8 @@ class DetectionService:
             return "Arquivos da gravação não estão mais disponíveis."
         ctx.progress(0.1, "Extraindo trecho")
         audio = self.decoder([s.path for s in segs], start=cand.start - segs[0].start_offset,
-                             duration=cand.duration, ffmpeg=self.ffmpeg())
+                             duration=cand.duration, ffmpeg=self.ffmpeg(),
+                             durations=[s.duration for s in segs])
         ctx.raise_if_cancelled()
         if self.transcriber is None:
             raise AnalysisError("Transcrição indisponível.")
