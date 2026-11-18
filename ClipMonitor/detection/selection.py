@@ -13,8 +13,8 @@ from dataclasses import dataclass, field
 
 from models.candidate import Candidate, CandidateStatus
 
-PROTECTED = (CandidateStatus.APPROVED,)
-ACTIVE = (CandidateStatus.DETECTED, CandidateStatus.SCORED, CandidateStatus.APPROVED)
+PROTECTED = (CandidateStatus.APPROVED, CandidateStatus.RENDERED)
+ACTIVE = (CandidateStatus.DETECTED, CandidateStatus.SCORED, CandidateStatus.APPROVED, CandidateStatus.RENDERED)
 
 
 @dataclass

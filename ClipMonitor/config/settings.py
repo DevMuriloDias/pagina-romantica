@@ -62,6 +62,13 @@ class AppSettings:
     min_gap_between_moments: int = 15
     transcribe_moments: bool = True
     custom_keywords: str = ""
+    # Fase 4 — vídeo
+    auto_render: bool = True
+    clip_layout: str = "blur"
+    burn_subtitles: bool = True
+    subtitle_uppercase: bool = True
+    clip_fps: int = 30
+    video_quality: str = "equilibrado"
 
     SECRET_FIELDS = ("twitch_client_secret",)
 
@@ -96,6 +103,13 @@ class AppSettings:
             min_gap_between_moments=max(0, min(300, int(self.min_gap_between_moments))),
             transcribe_moments=bool(self.transcribe_moments),
             custom_keywords=self.custom_keywords.strip(),
+            auto_render=bool(self.auto_render),
+            clip_layout=self.clip_layout if self.clip_layout in ("blur", "crop") else "blur",
+            burn_subtitles=bool(self.burn_subtitles),
+            subtitle_uppercase=bool(self.subtitle_uppercase),
+            clip_fps=30 if int(self.clip_fps) not in (30, 60) else int(self.clip_fps),
+            video_quality=self.video_quality if self.video_quality in ("rapido", "equilibrado", "qualidade")
+            else "equilibrado",
         )
 
 

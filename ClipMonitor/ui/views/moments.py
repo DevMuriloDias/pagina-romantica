@@ -13,7 +13,7 @@ from utils.timeutils import format_relative
 FILTERS = {
     "Prontos": (CandidateStatus.SCORED,),
     "Em análise": (CandidateStatus.DETECTED,),
-    "Aprovados": (CandidateStatus.APPROVED,),
+    "Com clipe": (CandidateStatus.APPROVED, CandidateStatus.RENDERED),
     "Descartados": (CandidateStatus.DISCARDED, CandidateStatus.REJECTED),
     "Todos": None,
 }
@@ -21,7 +21,7 @@ AUDIO_LABELS = {"pico": "Volume", "subida": "Explosão", "intensidade": "Energia
 TEXT_LABELS = {"palavras": "Palavras", "ritmo": "Ritmo", "risadas": "Risadas"}
 STATUS_STYLE = {
     CandidateStatus.DETECTED: "off", CandidateStatus.SCORED: "on", CandidateStatus.APPROVED: "on",
-    CandidateStatus.DISCARDED: "off", CandidateStatus.REJECTED: "warn",
+    CandidateStatus.DISCARDED: "off", CandidateStatus.REJECTED: "warn", CandidateStatus.RENDERED: "on",
 }
 
 
@@ -49,7 +49,7 @@ class MomentsView(BaseView):
             stats.grid_columnconfigure(i, weight=1, uniform="m")
         self.s_ready = StatCard(stats, "Prontos", hint="aguardando sua revisão", accent=True)
         self.s_pending = StatCard(stats, "Em análise", hint="na fila de transcrição")
-        self.s_approved = StatCard(stats, "Aprovados", hint="viram clipes na Fase 4")
+        self.s_approved = StatCard(stats, "Com clipe", hint="gerados ou na fila de vídeo")
         self.s_discarded = StatCard(stats, "Descartados", hint="nota baixa ou sobreposição")
         for i, c in enumerate([self.s_ready, self.s_pending, self.s_approved, self.s_discarded]):
             c.grid(row=0, column=i, sticky="ew", padx=(0 if i == 0 else 6, 0 if i == 3 else 6))
@@ -80,7 +80,7 @@ class MomentsView(BaseView):
         counts = self.ctx.candidate_repo.counts()
         self.s_ready.set(str(counts.get(CandidateStatus.SCORED, 0)))
         self.s_pending.set(str(counts.get(CandidateStatus.DETECTED, 0)))
-        self.s_approved.set(str(counts.get(CandidateStatus.APPROVED, 0)))
+        self.s_approved.set(str(counts.get(CandidateStatus.APPROVED, 0) + counts.get(CandidateStatus.RENDERED, 0)))
         self.s_discarded.set(str(counts.get(CandidateStatus.DISCARDED, 0) + counts.get(CandidateStatus.REJECTED, 0)))
 
         items = self.ctx.candidate_repo.list(FILTERS[self.filter.get()], limit=150)
@@ -155,11 +155,11 @@ class MomentsView(BaseView):
         actions = ctk.CTkFrame(card, fg_color="transparent")
         actions.grid(row=0, column=2, rowspan=4, padx=14, sticky="e")
         GhostButton(actions, "▶  Ouvir", lambda: self._preview(c, rec), width=96).pack(pady=2, fill="x")
-        if c.status in (CandidateStatus.SCORED, CandidateStatus.DETECTED, CandidateStatus.REJECTED,
-                        CandidateStatus.DISCARDED):
-            PrimaryButton(actions, "Aprovar", lambda: self._set(c, CandidateStatus.APPROVED), width=96).pack(
-                pady=2, fill="x")
-        if c.status is not CandidateStatus.REJECTED:
+        if c.status in (CandidateStatus.SCORED, CandidateStatus.REJECTED, CandidateStatus.DISCARDED):
+            PrimaryButton(actions, "Gerar clipe", lambda: self._render(c), width=96).pack(pady=2, fill="x")
+        elif c.status is CandidateStatus.RENDERED:
+            GhostButton(actions, "Gerar de novo", lambda: self._render(c), width=96).pack(pady=2, fill="x")
+        if c.status not in (CandidateStatus.REJECTED, CandidateStatus.RENDERED, CandidateStatus.APPROVED):
             GhostButton(actions, "Rejeitar", lambda: self._set(c, CandidateStatus.REJECTED), danger=True,
                         width=96).pack(pady=2, fill="x")
         if rec:
@@ -179,8 +179,19 @@ class MomentsView(BaseView):
     # ------------------------------------------------------------ ações
     def _set(self, c: Candidate, status: CandidateStatus) -> None:
         self.ctx.candidate_repo.set_status(c.id, status)
-        self.app.toast("Momento aprovado." if status is CandidateStatus.APPROVED else "Momento rejeitado.",
-                       "success" if status is CandidateStatus.APPROVED else "info")
+        self.app.toast("Momento rejeitado.", "info")
+        self.app.refresh_current()
+
+    def _render(self, c: Candidate) -> None:
+        from video.service import ClipError
+
+        try:
+            if c.status in (CandidateStatus.REJECTED, CandidateStatus.DISCARDED):
+                self.ctx.candidate_repo.set_status(c.id, CandidateStatus.SCORED)
+            self.ctx.clips.enqueue(c.id)
+            self.app.toast("Clipe adicionado à fila de renderização.", "success")
+        except ClipError as exc:
+            self.app.toast(str(exc), "error")
         self.app.refresh_current()
 
     def _preview(self, c: Candidate, rec) -> None:

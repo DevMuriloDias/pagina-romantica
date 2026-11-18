@@ -9,6 +9,7 @@ from datetime import datetime
 from config.settings import AppSettings
 from database.connection import Database
 from detection.selection import Decision, decide
+from models.clip import Clip, ClipStatus
 from models.candidate import Candidate, CandidateStatus, TranscriptSegment, TranscriptWord
 from models.events import StreamEvent, StreamEventType
 from models.recording import Recording, RecordingStatus, Segment, SegmentStatus
@@ -740,3 +741,74 @@ class CandidateRepository:
     def counts(self) -> dict[CandidateStatus, int]:
         rows = self.db.query("SELECT status, COUNT(*) AS n FROM candidates GROUP BY status")
         return {CandidateStatus(r["status"]): r["n"] for r in rows}
+
+
+# ---------------------------------------------------------------- clipes
+
+_CLIP_SELECT = """SELECT k.*, COALESCE(NULLIF(s.display_name, ''), s.login) AS streamer_name
+                  FROM clips k JOIN streamers s ON s.id = k.streamer_id"""
+
+
+def _row_to_clip(r: sqlite3.Row) -> Clip:
+    return Clip(
+        id=r["id"], candidate_id=r["candidate_id"], streamer_id=r["streamer_id"], path=r["path"],
+        srt_path=r["srt_path"], thumbnail_path=r["thumbnail_path"], duration=r["duration"], width=r["width"],
+        height=r["height"], size_bytes=r["size_bytes"], score=r["score"], layout=r["layout"],
+        has_subtitles=bool(r["has_subtitles"]), transcript_text=r["transcript_text"],
+        status=ClipStatus(r["status"]), created_at=from_iso(r["created_at"]),
+        reviewed_at=from_iso(r["reviewed_at"]),
+        streamer_name=r["streamer_name"] if "streamer_name" in r.keys() else None,
+    )
+
+
+class ClipRepository:
+    def __init__(self, db: Database):
+        self.db = db
+
+    def upsert(self, c: Clip) -> Clip:
+        """Um clipe por momento: renderizar de novo substitui o anterior (volta para revisão)."""
+        now = to_iso(utcnow())
+        with self.db.transaction() as tx:
+            tx.execute(
+                """INSERT INTO clips (candidate_id, streamer_id, path, srt_path, thumbnail_path, duration, width,
+                       height, size_bytes, score, layout, has_subtitles, transcript_text, status, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+                   ON CONFLICT (candidate_id) DO UPDATE SET
+                       path=excluded.path, srt_path=excluded.srt_path, thumbnail_path=excluded.thumbnail_path,
+                       duration=excluded.duration, width=excluded.width, height=excluded.height,
+                       size_bytes=excluded.size_bytes, score=excluded.score, layout=excluded.layout,
+                       has_subtitles=excluded.has_subtitles, transcript_text=excluded.transcript_text,
+                       status='pending', created_at=excluded.created_at, reviewed_at=NULL""",
+                (c.candidate_id, c.streamer_id, c.path, c.srt_path, c.thumbnail_path, c.duration, c.width,
+                 c.height, c.size_bytes, c.score, c.layout, int(c.has_subtitles), c.transcript_text, now),
+            )
+        return self.get_by_candidate(c.candidate_id)  # type: ignore[return-value]
+
+    def get(self, clip_id: int) -> Clip | None:
+        row = self.db.query_one(f"{_CLIP_SELECT} WHERE k.id = ?", (clip_id,))
+        return _row_to_clip(row) if row else None
+
+    def get_by_candidate(self, candidate_id: int) -> Clip | None:
+        row = self.db.query_one(f"{_CLIP_SELECT} WHERE k.candidate_id = ?", (candidate_id,))
+        return _row_to_clip(row) if row else None
+
+    def list(self, statuses: tuple[ClipStatus, ...] | None = None, limit: int = 300) -> list[Clip]:
+        sql, params = _CLIP_SELECT, []
+        if statuses:
+            sql += f" WHERE k.status IN ({','.join('?' * len(statuses))})"
+            params = [s.value for s in statuses]
+        sql += " ORDER BY k.id DESC LIMIT ?"
+        return [_row_to_clip(r) for r in self.db.query(sql, tuple(params) + (limit,))]
+
+    def move(self, clip_id: int, status: ClipStatus, path: str, srt_path: str | None) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE clips SET status=?, path=?, srt_path=?, reviewed_at=? WHERE id=?",
+                       (status.value, path, srt_path, to_iso(utcnow()), clip_id))
+
+    def delete(self, clip_id: int) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("DELETE FROM clips WHERE id=?", (clip_id,))
+
+    def counts(self) -> dict[ClipStatus, int]:
+        rows = self.db.query("SELECT status, COUNT(*) AS n FROM clips GROUP BY status")
+        return {ClipStatus(r["status"]): r["n"] for r in rows}

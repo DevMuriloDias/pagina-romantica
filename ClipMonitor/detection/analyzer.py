@@ -74,6 +74,7 @@ class DetectionService:
         self.vad_factory = vad_factory
         self.decoder = decoder
         self.ffmpeg = ffmpeg
+        self.on_scored: Callable[[Candidate], None] = lambda c: None  # ex.: renderização automática
         self._vad: VoiceActivityDetector | None = None
         self._vad_lock = threading.Lock()
 
@@ -204,3 +205,7 @@ class DetectionService:
             return
         self.activity.add(f"Momento detectado em {cand.streamer_name} (nota {cand.score:.0f}).",
                           "live", cand.streamer_id)
+        try:
+            self.on_scored(cand)
+        except Exception:  # noqa: BLE001 - a detecção não pode falhar por causa do passo seguinte
+            log.exception("Falha ao encaminhar momento %s", cand.id)

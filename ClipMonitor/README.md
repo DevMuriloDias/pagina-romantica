@@ -11,7 +11,8 @@ Local, single-user, free/open-source stack. UI is in Brazilian Portuguese.
 | 1 — Foundation | Project structure, SQLite, desktop UI, streamer management, Twitch auth + live status | ✅ done |
 | 2 — Monitoring | Background monitoring worker, stream start/end events, per-streamer intervals, status indicators, persistent job queue | ✅ done |
 | 3 — Detection | Authorized capture (Streamlink → FFmpeg segments), audio analysis, Silero VAD, intensity changes, local Whisper transcription, moment scoring, non-overlapping selection | ✅ done |
-| 4 — Clips | 9:16 render, PT-BR burned-in subtitles (from the word timings already stored), clip library | planned |
+| 4 — Video | FFmpeg render to 1080x1920, word-synced PT-BR subtitles (ASS burned in + .srt), thumbnails, saved locally | ✅ done |
+| 5 — Finalization | Clip review, queue controls, error handling/logging, automatic startup | in progress |
 
 ## Setup (Windows 11, Python 3.11)
 
@@ -59,7 +60,8 @@ capture/           Recorder (Streamlink | FFmpeg segmenter), CaptureService (aut
 detection/         audio decode, VAD (Silero ONNX / energy fallback), intensity features,
                    scoring, overlap-free selection, analysis + transcription job handlers
 transcription/     WhisperTranscriber (faster-whisper, CPU int8, lazy load / idle unload)
-video/             reserved for phase 4
+video/             subtitles (word-grouped ASS with highlight + SRT), 9:16 layouts, Renderer
+                   (FFmpeg, progress/cancel, ffprobe validation), ClipService (RENDER jobs)
 output/{pending,approved,rejected,thumbnails}
 data/clipmonitor.db, logs/clipmonitor.log   created at runtime (git-ignored)
 ```
@@ -122,3 +124,26 @@ ONLINE event ─► CAPTURE job ─ streamlink --stdout | ffmpeg -c copy -f segm
   A peak must also dominate its own window, so no window "borrows" a neighbouring event's score.
 - **Retention:** finished recordings are deleted after N hours, except segments that contain
   pending or approved moments. Capture stops if free disk space drops below the configured minimum.
+
+## Video pipeline (phase 4)
+
+```
+moment (SCORED) ─► RENDER job ─ ffmpeg -ss <start> -f concat (segments) -t <dur>
+                       -filter_complex  fps → 9:16 layout → ass=legendas.ass → yuv420p
+                                        loudnorm -14 LUFS → 48 kHz
+                       libx264 (preset by quality setting) + AAC 160k, +faststart
+                   ─► ffprobe check (1080x1920, duration, audio) ─► atomic move
+output/pending/<canal>_<data>_n<nota>_m<id>.mp4  + .srt
+output/thumbnails/<same>.jpg
+```
+
+- **Layouts:** *blur* keeps the whole 16:9 frame over a blurred, zoomed copy (blur computed at
+  270x480 to save CPU); *crop* fills the screen with a centre 9:16 crop.
+- **Subtitles:** words from Whisper are grouped into short lines (≤22 chars, ≤4 words, split on
+  pauses/punctuation); the word being spoken is highlighted in #00FF88. Tests render with and without
+  subtitles and compare pixels to prove the text appears only in the subtitle band and only while
+  the line is spoken.
+- **Accuracy:** cuts across segment boundaries use the concat demuxer; a test compares rendered
+  frames against the unsplit source.
+- **Never a half file:** rendering happens in `output/.work/…`; only a validated MP4 is moved into
+  `pending/`. Streams without audio get a silent track (platforms reject video-only files).

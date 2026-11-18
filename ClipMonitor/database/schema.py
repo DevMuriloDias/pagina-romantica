@@ -169,3 +169,34 @@ MIGRATIONS.append(
         ],
     )
 )
+
+MIGRATIONS.append(
+    (
+        4,
+        [
+            # Fase 4 — clipes renderizados
+            """
+            CREATE TABLE clips (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id    INTEGER NOT NULL UNIQUE REFERENCES candidates(id) ON DELETE CASCADE,
+                streamer_id     INTEGER NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+                path            TEXT    NOT NULL,
+                srt_path        TEXT,
+                thumbnail_path  TEXT,
+                duration        REAL    NOT NULL,
+                width           INTEGER NOT NULL,
+                height          INTEGER NOT NULL,
+                size_bytes      INTEGER NOT NULL DEFAULT 0,
+                score           REAL    NOT NULL,
+                layout          TEXT    NOT NULL,
+                has_subtitles   INTEGER NOT NULL DEFAULT 0,
+                transcript_text TEXT    NOT NULL DEFAULT '',
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                created_at      TEXT    NOT NULL,
+                reviewed_at     TEXT
+            )
+            """,
+            "CREATE INDEX idx_clips_status ON clips (status, id DESC)",
+        ],
+    )
+)

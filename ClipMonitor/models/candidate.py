@@ -10,14 +10,15 @@ class CandidateStatus(str, Enum):
     DETECTED = "detected"        # pontuação de áudio; aguardando transcrição
     SCORED = "scored"            # pontuação final; pronto para virar clipe (Fase 4)
     DISCARDED = "discarded"      # abaixo do mínimo após transcrição / sobreposição
-    APPROVED = "approved"
+    APPROVED = "approved"        # usuário pediu o clipe (renderização na fila)
     REJECTED = "rejected"
+    RENDERED = "rendered"        # clipe gerado (ver tabela clips)
 
     @property
     def label(self) -> str:
         return {
             "detected": "Transcrevendo", "scored": "Pronto", "discarded": "Descartado",
-            "approved": "Aprovado", "rejected": "Rejeitado",
+            "approved": "Gerando clipe", "rejected": "Rejeitado", "rendered": "Clipe gerado",
         }[self.value]
 
 

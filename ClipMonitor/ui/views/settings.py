@@ -17,6 +17,12 @@ DISK_OPTIONS = {"5 GB": 5, "10 GB": 10, "20 GB": 20, "50 GB": 50}
 RETENTION_OPTIONS = {"12 horas": 12, "24 horas": 24, "48 horas": 48, "7 dias": 168}
 PER_HOUR_OPTIONS = {"3 por hora": 3, "6 por hora": 6, "10 por hora": 10, "15 por hora": 15}
 GAP_OPTIONS = {"Sem folga": 0, "10 s": 10, "15 s": 15, "30 s": 30, "60 s": 60}
+from video.layout import LAYOUTS
+from video.renderer import ENCODE_PRESETS
+
+LAYOUT_OPTIONS = {label: key for key, label in LAYOUTS.items()}
+QUALITY_OPTIONS = {label: key for key, (_p, _c, label) in ENCODE_PRESETS.items()}
+FPS_OPTIONS = {"30 fps (recomendado)": 30, "60 fps (mais lento)": 60}
 GRACE_OPTIONS = {
     "Imediata (1 verificação)": 1,
     "2 verificações seguidas (recomendado)": 2,
@@ -153,6 +159,27 @@ class SettingsView(BaseView):
                     "Separe por vírgulas. Somam pontos quando aparecem na transcrição, além do vocabulário padrão.")
         ctk.CTkFrame(det, fg_color="transparent", height=18).grid(row=self._next(det), column=0)
 
+        # ---- Vídeo
+        vid = self._section(scroll, 4, "Vídeos verticais",
+                            "Clipes 1080x1920 (9:16) para TikTok, Reels e Shorts, salvos em <pasta de saída>/pending.")
+        self.auto_render = Switch(vid, "Gerar o vídeo automaticamente para cada momento acima da nota mínima")
+        self.auto_render.grid(row=self._next(vid), column=0, sticky="w", padx=20, pady=(14, 0))
+        vgrid = ctk.CTkFrame(vid, fg_color="transparent")
+        vgrid.grid(row=self._next(vid), column=0, sticky="ew", padx=20, pady=(14, 0))
+        for i in range(3):
+            vgrid.grid_columnconfigure(i, weight=1, uniform="vid")
+        self.layout = self._option(vgrid, 0, "Enquadramento", list(LAYOUT_OPTIONS))
+        self.encode = self._option(vgrid, 1, "Qualidade do vídeo", list(QUALITY_OPTIONS))
+        self.fps = self._option(vgrid, 2, "Quadros por segundo", list(FPS_OPTIONS))
+        self.burn_subs = Switch(vid, "Legendas em português sincronizadas palavra por palavra")
+        self.burn_subs.grid(row=self._next(vid), column=0, sticky="w", padx=20, pady=(16, 0))
+        self.upper_subs = Switch(vid, "Legendas em LETRAS MAIÚSCULAS")
+        self.upper_subs.grid(row=self._next(vid), column=0, sticky="w", padx=20, pady=(10, 0))
+        muted(vid, "As legendas dependem da transcrição local. Um arquivo .srt também é salvo ao lado de "
+                   "cada vídeo. Renderizar usa bastante CPU: com 1 processamento por vez, um clipe de 45 s "
+                   "leva cerca de 1 minuto no i3-10100F.", wraplength=760).grid(
+            row=self._next(vid), column=0, sticky="w", padx=20, pady=(8, 18))
+
     # ------------------------------------------------------------ helpers
     def _section(self, parent, row: int, title: str, subtitle: str) -> Card:
         card = Card(parent)
@@ -249,6 +276,12 @@ class SettingsView(BaseView):
         self.gap.set(self._label_for(GAP_OPTIONS, s.min_gap_between_moments, f"{s.min_gap_between_moments} s"))
         self.transcribe.select() if s.transcribe_moments else self.transcribe.deselect()
         self._set_entry(self.keywords, s.custom_keywords)
+        self.auto_render.select() if s.auto_render else self.auto_render.deselect()
+        self.layout.set(LAYOUTS.get(s.clip_layout, LAYOUTS["blur"]))
+        self.encode.set(ENCODE_PRESETS.get(s.video_quality, ENCODE_PRESETS["equilibrado"])[2])
+        self.fps.set(self._label_for(FPS_OPTIONS, s.clip_fps, "30 fps (recomendado)"))
+        self.burn_subs.select() if s.burn_subtitles else self.burn_subs.deselect()
+        self.upper_subs.select() if s.subtitle_uppercase else self.upper_subs.deselect()
 
     def _collect(self):
         current = self.ctx.settings_repo.load()
@@ -273,6 +306,12 @@ class SettingsView(BaseView):
             min_gap_between_moments=GAP_OPTIONS.get(self.gap.get(), current.min_gap_between_moments),
             transcribe_moments=bool(self.transcribe.get()),
             custom_keywords=self.keywords.get(),
+            auto_render=bool(self.auto_render.get()),
+            clip_layout=LAYOUT_OPTIONS.get(self.layout.get(), current.clip_layout),
+            video_quality=QUALITY_OPTIONS.get(self.encode.get(), current.video_quality),
+            clip_fps=FPS_OPTIONS.get(self.fps.get(), current.clip_fps),
+            burn_subtitles=bool(self.burn_subs.get()),
+            subtitle_uppercase=bool(self.upper_subs.get()),
         )
 
     def save(self) -> None:

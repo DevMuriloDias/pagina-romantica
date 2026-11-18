@@ -10,6 +10,7 @@ from capture.service import CaptureService
 from database.repositories import (
     ActivityRepository,
     CandidateRepository,
+    ClipRepository,
     RecordingRepository,
     JobRepository,
     LiveSessionRepository,
@@ -26,6 +27,7 @@ from services.streamer_service import StreamerService
 from services.tools import ToolsService
 from services.twitch_service import TwitchService
 from transcription.whisper import WhisperTranscriber
+from video.service import ClipService
 from workers.job_worker import JobWorker
 from workers.monitoring_worker import MonitoringWorker
 
@@ -51,6 +53,8 @@ class AppContext:
     capture: CaptureService
     detection: DetectionService
     transcriber: WhisperTranscriber
+    clip_repo: ClipRepository
+    clips: ClipService
 
     def close(self) -> None:
         self.monitor.stop()
@@ -96,12 +100,16 @@ def build_context(db_path: Path | str | None = None) -> AppContext:
                              jobs, tools)
     detection = DetectionService(recording_repo, candidate_repo, settings_repo, activity_repo, jobs,
                                  transcriber=transcriber, ffmpeg=ffmpeg_path)
+    clip_repo = ClipRepository(db)
+    clips = ClipService(candidate_repo, recording_repo, clip_repo, settings_repo, activity_repo, jobs, tools)
+    detection.on_scored = clips.on_scored
     capture.attach(bus)
     jobs.register(JobType.CAPTURE, capture.handle)
     jobs.register(JobType.ANALYSIS, detection.handle_analysis)
     jobs.register(JobType.TRANSCRIPTION, detection.handle_transcription)
+    jobs.register(JobType.RENDER, clips.handle)
     return AppContext(
         db, settings_repo, streamer_repo, activity_repo, event_repo, job_repo, bus, twitch,
         streamers, checker, monitor, jobs, tools, status, recording_repo, candidate_repo,
-        capture, detection, transcriber,
+        capture, detection, transcriber, clip_repo, clips,
     )
