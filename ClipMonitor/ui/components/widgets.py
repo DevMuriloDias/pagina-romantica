@@ -180,3 +180,44 @@ def confirm(root, title: str, message: str, confirm_text: str = "Confirmar", dan
     win.after(50, win.grab_set)
     win.wait_window()
     return result["ok"]
+
+
+STATE_COLORS = {
+    "stopped": t.TEXT_DIM,
+    "idle": t.ACCENT,
+    "checking": t.ACCENT,
+    "backoff": t.WARNING,
+    "error": t.DANGER,
+}
+
+
+class StatusRow(ctk.CTkFrame):
+    """Linha de indicador: ● Título ............ valor"""
+
+    def __init__(self, master, title: str, **kw):
+        super().__init__(master, fg_color="transparent", **kw)
+        self.grid_columnconfigure(1, weight=1)
+        self.dot = ctk.CTkLabel(self, text="●", font=(t.FONT_FAMILY, 12), text_color=t.TEXT_DIM, width=14)
+        self.dot.grid(row=0, column=0, padx=(0, 8))
+        label(self, title, font=t.FONT_BODY).grid(row=0, column=1, sticky="w")
+        self.value = muted(self, "—", font=t.FONT_SMALL)
+        self.value.grid(row=0, column=2, sticky="e")
+
+    def set(self, value: str, color: str = t.TEXT_DIM) -> None:
+        self.dot.configure(text_color=color)
+        self.value.configure(text=value)
+
+
+class ProgressBar(ctk.CTkProgressBar):
+    def __init__(self, master, **kw):
+        kw.setdefault("height", 6)
+        super().__init__(master, progress_color=t.ACCENT, fg_color=t.BORDER, corner_radius=3, **kw)
+        self.set(0)
+
+
+def option_menu(master, values: list[str], command=None, width: int = 140) -> ctk.CTkOptionMenu:
+    return ctk.CTkOptionMenu(
+        master, values=values, command=command, width=width, fg_color=t.SECONDARY, button_color=t.BORDER,
+        button_hover_color=t.CARD_HOVER, dropdown_fg_color=t.CARD, dropdown_hover_color=t.CARD_HOVER,
+        text_color=t.TEXT, height=36, corner_radius=10, font=t.FONT_BODY,
+    )

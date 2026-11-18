@@ -8,7 +8,8 @@ sys.path.insert(0, str(ROOT))
 
 from database.connection import open_database  # noqa: E402
 from database.repositories import (  # noqa: E402
-    ActivityRepository, LiveSessionRepository, SettingsRepository, StreamerRepository,
+    ActivityRepository, JobRepository, LiveSessionRepository, SettingsRepository, StreamerRepository,
+    StreamEventRepository,
 )
 
 
@@ -66,6 +67,8 @@ def repos(db):
         "sessions": LiveSessionRepository(db),
         "activity": ActivityRepository(db),
         "settings": SettingsRepository(db),
+        "events": StreamEventRepository(db),
+        "jobs": JobRepository(db),
     }
 
 

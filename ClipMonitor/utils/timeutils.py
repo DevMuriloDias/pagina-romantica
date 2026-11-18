@@ -54,3 +54,20 @@ def format_viewers(count: int | None) -> str:
     if count >= 1000:
         return f"{count / 1000:.1f} mil".replace(".", ",")
     return str(count)
+
+
+def format_countdown(seconds: float) -> str:
+    seconds = max(0, int(round(seconds)))
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes} min {secs:02d} s"
+    return format_duration(seconds)
+
+
+def format_interval(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, secs = divmod(seconds, 60)
+    return f"{minutes} min" if not secs else f"{minutes} min {secs} s"

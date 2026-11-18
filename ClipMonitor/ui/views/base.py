@@ -19,3 +19,7 @@ class BaseView(ctk.CTkFrame):
 
     def refresh(self) -> None:
         pass
+
+    def tick(self) -> None:
+        """Chamado a cada segundo enquanto a tela está visível (sem IO pesado)."""
+        pass

@@ -11,8 +11,9 @@ from ui.components.widgets import (
     Avatar, Badge, Card, EmptyState, Entry, GhostButton, PageHeader, PrimaryButton, Switch, confirm, label, muted,
 )
 from ui.views.base import BaseView
+from services.status_service import activity_label
 from ui.views.streamer_dialog import StreamerDialog
-from utils.timeutils import format_relative, format_viewers
+from utils.timeutils import format_countdown, format_interval, format_relative, format_viewers, utcnow
 
 
 class StreamersView(BaseView):
@@ -43,6 +44,7 @@ class StreamersView(BaseView):
         self.list = ctk.CTkScrollableFrame(self, fg_color="transparent")
         self.list.grid(row=2, column=0, sticky="nsew")
         self.list.grid_columnconfigure(0, weight=1)
+        self._countdowns: list[tuple[ctk.CTkLabel, Streamer]] = []
 
     def open_add(self) -> None:
         StreamerDialog(self.app)
@@ -66,6 +68,7 @@ class StreamersView(BaseView):
     def refresh(self) -> None:
         for w in self.list.winfo_children():
             w.destroy()
+        self._countdowns = []
         items = self._filtered()
         if not items:
             if self.search.get().strip() or self.filter.get() != "Todos":
@@ -87,8 +90,16 @@ class StreamersView(BaseView):
         top.grid(row=0, column=1, sticky="w", pady=(14, 0))
         label(top, s.name, font=(t.FONT_FAMILY, 14, "bold")).pack(side="left")
         muted(top, f"  @{s.login}").pack(side="left")
-        if s.is_live:
+        if s.is_live and s.offline_misses:
+            Badge(top, "CONFIRMANDO FIM", "warn").pack(side="left", padx=(10, 0))
+        elif s.is_live:
             Badge(top, "AO VIVO", "live").pack(side="left", padx=(10, 0))
+        activity = self.app.pipeline.per_streamer.get(s.id)
+        if activity:
+            text, style = activity_label(activity)
+            Badge(top, text, style).pack(side="left", padx=(8, 0))
+        if s.check_interval_seconds:
+            Badge(top, f"⏱ {format_interval(s.check_interval_seconds)}", "off").pack(side="left", padx=(8, 0))
         if not s.authorized:
             Badge(top, "SEM AUTORIZAÇÃO", "warn").pack(side="left", padx=(8, 0))
         elif not s.twitch_user_id:
@@ -98,7 +109,10 @@ class StreamersView(BaseView):
             detail = f"{s.game_name or 'Sem categoria'} · {format_viewers(s.viewer_count)} espectadores · {(s.stream_title or '')[:70]}"
         else:
             detail = f"Offline · verificado {format_relative(s.last_checked_at)}"
-        muted(card, detail).grid(row=1, column=1, sticky="w", pady=(0, 14))
+        detail_label = muted(card, detail)
+        detail_label.grid(row=1, column=1, sticky="w", pady=(0, 14))
+        if not s.is_live and s.is_monitorable:
+            self._countdowns.append((detail_label, s))
 
         actions = ctk.CTkFrame(card, fg_color="transparent")
         actions.grid(row=0, column=2, rowspan=2, padx=14)
@@ -112,6 +126,23 @@ class StreamersView(BaseView):
         GhostButton(actions, "Editar", lambda: StreamerDialog(self.app, s), width=70).pack(side="left", padx=2)
         GhostButton(actions, "Remover", lambda: self._remove(s), danger=True, width=80).pack(side="left", padx=2)
         return card
+
+    def tick(self) -> None:
+        st = self.ctx.monitor.status
+        if not self._countdowns:
+            return
+        now = utcnow()
+        default = self.ctx.settings_repo.load().poll_interval_seconds
+        for lbl, s in self._countdowns:
+            text = f"Offline · verificado {format_relative(s.last_checked_at, now)}"
+            if st.running:
+                due = self.ctx.checker.due_at(s, default)
+                remaining = (due - now).total_seconds() if due else 0
+                text += " · próxima verificação " + (f"em {format_countdown(remaining)}" if remaining > 1 else "agora")
+            try:
+                lbl.configure(text=text)
+            except Exception:  # widget destruído entre refreshes
+                pass
 
     def _toggle(self, s: Streamer, sw: Switch) -> None:
         enabled = bool(sw.get())

@@ -108,3 +108,24 @@ def test_concurrent_writes_from_threads(repos):
         th.join()
     assert not errors
     assert len(repo.recent(200)) == 80
+
+
+def test_upgrade_from_phase1_database(tmp_path, monkeypatch):
+    import database.connection as conn_mod
+
+    path = tmp_path / "v1.db"
+    monkeypatch.setattr(conn_mod, "MIGRATIONS", MIGRATIONS[:1])
+    db = open_database(path)
+    with db.transaction() as tx:
+        tx.execute(
+            "INSERT INTO streamers (login, authorized, created_at, updated_at) VALUES ('antigo', 1, '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+        )
+    db.close()
+    monkeypatch.setattr(conn_mod, "MIGRATIONS", MIGRATIONS)
+    db = open_database(path)
+    from database.repositories import StreamerRepository
+
+    s = StreamerRepository(db).get_by_login("antigo")
+    assert s.check_interval_seconds is None and s.offline_misses == 0
+    assert db.migrate() == MIGRATIONS[-1][0]
+    db.close()

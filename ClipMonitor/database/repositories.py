@@ -1,12 +1,15 @@
 """Acesso a dados (padrão repositório). Nenhuma lógica de UI aqui."""
 from __future__ import annotations
 
+import json
 import sqlite3
 from dataclasses import fields
 from datetime import datetime
 
 from config.settings import AppSettings
 from database.connection import Database
+from models.events import StreamEvent, StreamEventType
+from models.job import Job, JobStatus, JobType
 from models.live_status import StreamInfo
 from models.streamer import LiveSession, Streamer
 from utils import secrets
@@ -28,6 +31,9 @@ def _row_to_streamer(row: sqlite3.Row) -> Streamer:
         authorization_note=row["authorization_note"],
         monitoring_enabled=bool(row["monitoring_enabled"]),
         notes=row["notes"],
+        check_interval_seconds=row["check_interval_seconds"],
+        offline_misses=row["offline_misses"],
+        last_seen_live_at=from_iso(row["last_seen_live_at"]),
         is_live=bool(row["is_live"]),
         stream_id=row["stream_id"],
         stream_title=row["stream_title"],
@@ -70,12 +76,13 @@ class StreamerRepository:
             with self.db.transaction() as tx:
                 cur = tx.execute(
                     """INSERT INTO streamers (login, display_name, twitch_user_id, profile_image_url,
-                           authorized, authorization_note, monitoring_enabled, notes, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           authorized, authorization_note, monitoring_enabled, notes, check_interval_seconds,
+                           created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         s.login, s.display_name, s.twitch_user_id, s.profile_image_url,
                         int(s.authorized), s.authorization_note, int(s.monitoring_enabled),
-                        s.notes, now, now,
+                        s.notes, s.check_interval_seconds, now, now,
                     ),
                 )
                 new_id = cur.lastrowid
@@ -92,12 +99,13 @@ class StreamerRepository:
             with self.db.transaction() as tx:
                 tx.execute(
                     """UPDATE streamers SET login=?, display_name=?, twitch_user_id=?, profile_image_url=?,
-                           authorized=?, authorization_note=?, monitoring_enabled=?, notes=?, updated_at=?
+                           authorized=?, authorization_note=?, monitoring_enabled=?, notes=?,
+                           check_interval_seconds=?, updated_at=?
                        WHERE id=?""",
                     (
                         s.login, s.display_name, s.twitch_user_id, s.profile_image_url,
                         int(s.authorized), s.authorization_note, int(s.monitoring_enabled),
-                        s.notes, to_iso(utcnow()), s.id,
+                        s.notes, s.check_interval_seconds, to_iso(utcnow()), s.id,
                     ),
                 )
         except sqlite3.IntegrityError as exc:
@@ -125,22 +133,32 @@ class StreamerRepository:
                 (user_id, display_name, image, to_iso(utcnow()), streamer_id),
             )
 
-    def set_live(self, streamer_id: int, info: StreamInfo, checked_at: datetime) -> None:
+    def save_live_state(self, s: Streamer, checked_at: datetime) -> None:
+        """Persiste o estado ao vivo calculado pelo rastreador (``StreamTracker``)."""
         with self.db.transaction() as tx:
             tx.execute(
-                """UPDATE streamers SET is_live=1, stream_id=?, stream_title=?, game_name=?,
-                       viewer_count=?, live_since=?, last_checked_at=? WHERE id=?""",
-                (info.stream_id, info.title, info.game_name, info.viewer_count,
-                 to_iso(info.started_at), to_iso(checked_at), streamer_id),
+                """UPDATE streamers SET is_live=?, stream_id=?, stream_title=?, game_name=?, viewer_count=?,
+                       live_since=?, last_seen_live_at=?, offline_misses=?, last_checked_at=? WHERE id=?""",
+                (int(s.is_live), s.stream_id, s.stream_title, s.game_name, s.viewer_count,
+                 to_iso(s.live_since), to_iso(s.last_seen_live_at), s.offline_misses,
+                 to_iso(checked_at), s.id),
             )
 
+    # Atalhos usados em testes/semeadura de dados.
+    def set_live(self, streamer_id: int, info: StreamInfo, checked_at: datetime) -> None:
+        s = self.get(streamer_id)
+        assert s is not None
+        s.is_live, s.stream_id, s.stream_title, s.game_name = True, info.stream_id, info.title, info.game_name
+        s.viewer_count, s.live_since, s.last_seen_live_at, s.offline_misses = (
+            info.viewer_count, info.started_at, checked_at, 0)
+        self.save_live_state(s, checked_at)
+
     def set_offline(self, streamer_id: int, checked_at: datetime) -> None:
-        with self.db.transaction() as tx:
-            tx.execute(
-                """UPDATE streamers SET is_live=0, stream_id=NULL, stream_title=NULL, game_name=NULL,
-                       viewer_count=NULL, live_since=NULL, last_checked_at=? WHERE id=?""",
-                (to_iso(checked_at), streamer_id),
-            )
+        s = self.get(streamer_id)
+        assert s is not None
+        s.is_live, s.stream_id, s.stream_title, s.game_name = False, None, None, None
+        s.viewer_count, s.live_since, s.offline_misses = None, None, 0
+        self.save_live_state(s, checked_at)
 
     def counts(self) -> dict[str, int]:
         row = self.db.query_one(
@@ -302,3 +320,199 @@ class SettingsRepository:
 
     def clear_cached_token(self) -> None:
         self.delete_raw(self.TOKEN_KEY, self.TOKEN_EXPIRY_KEY)
+
+
+def _row_to_event(r: sqlite3.Row, name: str = "") -> StreamEvent:
+    return StreamEvent(
+        id=r["id"], type=StreamEventType(r["event_type"]), streamer_id=r["streamer_id"],
+        streamer_name=name or (r["streamer_name"] if "streamer_name" in r.keys() else ""),
+        detected_at=from_iso(r["detected_at"]), stream_id=r["stream_id"], title=r["title"],
+        game_name=r["game_name"], viewer_count=r["viewer_count"],
+        stream_started_at=from_iso(r["stream_started_at"]),
+    )
+
+
+class StreamEventRepository:
+    def __init__(self, db: Database, keep: int = 5000):
+        self.db = db
+        self.keep = keep
+
+    def add_many(self, events: list[StreamEvent]) -> list[StreamEvent]:
+        if not events:
+            return []
+        saved = []
+        with self.db.transaction() as tx:
+            for e in events:
+                cur = tx.execute(
+                    """INSERT INTO stream_events (streamer_id, event_type, stream_id, title, game_name,
+                           viewer_count, stream_started_at, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (e.streamer_id, e.type.value, e.stream_id, e.title, e.game_name, e.viewer_count,
+                     to_iso(e.stream_started_at), to_iso(e.detected_at)),
+                )
+                saved.append(StreamEvent(**{**e.__dict__, "id": cur.lastrowid}))
+            tx.execute(
+                "DELETE FROM stream_events WHERE id <= (SELECT MAX(id) FROM stream_events) - ?", (self.keep,)
+            )
+        return saved
+
+    def recent(self, limit: int = 50, streamer_id: int | None = None) -> list[StreamEvent]:
+        sql = """SELECT e.*, COALESCE(NULLIF(s.display_name, ''), s.login) AS streamer_name
+                 FROM stream_events e JOIN streamers s ON s.id = e.streamer_id"""
+        params: tuple = ()
+        if streamer_id is not None:
+            sql += " WHERE e.streamer_id = ?"
+            params = (streamer_id,)
+        sql += " ORDER BY e.id DESC LIMIT ?"
+        return [_row_to_event(r) for r in self.db.query(sql, params + (limit,))]
+
+
+def _row_to_job(r: sqlite3.Row) -> Job:
+    return Job(
+        id=r["id"], job_type=JobType(r["job_type"]), status=JobStatus(r["status"]),
+        streamer_id=r["streamer_id"], priority=r["priority"], progress=r["progress"],
+        message=r["message"], error=r["error"], payload=json.loads(r["payload"] or "{}"),
+        dedupe_key=r["dedupe_key"], attempts=r["attempts"],
+        streamer_name=r["streamer_name"] if "streamer_name" in r.keys() else None,
+        created_at=from_iso(r["created_at"]), started_at=from_iso(r["started_at"]),
+        finished_at=from_iso(r["finished_at"]), updated_at=from_iso(r["updated_at"]),
+    )
+
+
+_JOB_SELECT = """SELECT j.*, COALESCE(NULLIF(s.display_name, ''), s.login) AS streamer_name
+                 FROM jobs j LEFT JOIN streamers s ON s.id = j.streamer_id"""
+
+
+class JobRepository:
+    def __init__(self, db: Database):
+        self.db = db
+
+    def enqueue(self, job: Job) -> Job:
+        """Enfileira; se já existir tarefa ativa com o mesmo ``dedupe_key``, retorna a existente."""
+        now = to_iso(utcnow())
+        try:
+            with self.db.transaction() as tx:
+                cur = tx.execute(
+                    """INSERT INTO jobs (job_type, status, streamer_id, priority, message, payload,
+                           dedupe_key, created_at, updated_at) VALUES (?, 'queued', ?, ?, ?, ?, ?, ?, ?)""",
+                    (job.job_type.value, job.streamer_id, job.priority, job.message,
+                     json.dumps(job.payload), job.dedupe_key, now, now),
+                )
+                job_id = cur.lastrowid
+        except sqlite3.IntegrityError:
+            existing = self.db.query_one(
+                f"{_JOB_SELECT} WHERE j.dedupe_key = ? AND j.status IN ('queued','running')",
+                (job.dedupe_key,),
+            )
+            return _row_to_job(existing)
+        return self.get(job_id)  # type: ignore[return-value]
+
+    def get(self, job_id: int) -> Job | None:
+        row = self.db.query_one(f"{_JOB_SELECT} WHERE j.id = ?", (job_id,))
+        return _row_to_job(row) if row else None
+
+    def list(self, statuses: tuple[JobStatus, ...] | None = None, limit: int = 200) -> list[Job]:
+        sql, params = _JOB_SELECT, []
+        if statuses:
+            sql += f" WHERE j.status IN ({','.join('?' * len(statuses))})"
+            params = [st.value for st in statuses]
+        sql += " ORDER BY CASE j.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END, j.id DESC LIMIT ?"
+        return [_row_to_job(r) for r in self.db.query(sql, tuple(params) + (limit,))]
+
+    def claim_next(self, job_types: list[JobType]) -> Job | None:
+        """Marca atomicamente a próxima tarefa da fila como ``running``."""
+        if not job_types:
+            return None
+        now = to_iso(utcnow())
+        with self.db.transaction() as tx:
+            row = tx.execute(
+                f"""SELECT id FROM jobs WHERE status='queued' AND job_type IN ({','.join('?' * len(job_types))})
+                    ORDER BY priority DESC, id LIMIT 1""",
+                tuple(t.value for t in job_types),
+            ).fetchone()
+            if row is None:
+                return None
+            tx.execute(
+                """UPDATE jobs SET status='running', started_at=?, updated_at=?, attempts=attempts+1,
+                       progress=0, error=NULL WHERE id=?""",
+                (now, now, row["id"]),
+            )
+        return self.get(row["id"])
+
+    def update_progress(self, job_id: int, progress: float, message: str | None = None) -> None:
+        progress = max(0.0, min(1.0, float(progress)))
+        with self.db.transaction() as tx:
+            if message is None:
+                tx.execute("UPDATE jobs SET progress=?, updated_at=? WHERE id=?", (progress, to_iso(utcnow()), job_id))
+            else:
+                tx.execute("UPDATE jobs SET progress=?, message=?, updated_at=? WHERE id=?",
+                           (progress, message, to_iso(utcnow()), job_id))
+
+    def finish(self, job_id: int, status: JobStatus, message: str = "", error: str | None = None) -> None:
+        now = to_iso(utcnow())
+        progress_sql = ", progress=1" if status is JobStatus.COMPLETED else ""
+        with self.db.transaction() as tx:
+            tx.execute(
+                f"UPDATE jobs SET status=?, message=?, error=?, finished_at=?, updated_at=?{progress_sql} WHERE id=?",
+                (status.value, message, error, now, now, job_id),
+            )
+
+    def cancel_if_queued(self, job_id: int) -> bool:
+        now = to_iso(utcnow())
+        with self.db.transaction() as tx:
+            cur = tx.execute(
+                "UPDATE jobs SET status='cancelled', message='Cancelada pelo usuário', finished_at=?, updated_at=? "
+                "WHERE id=? AND status='queued'",
+                (now, now, job_id),
+            )
+            return cur.rowcount > 0
+
+    def requeue(self, job_id: int) -> bool:
+        """Recoloca na fila uma tarefa que falhou/foi cancelada/interrompida."""
+        retryable = tuple(s.value for s in JobStatus if s.is_retryable)
+        try:
+            with self.db.transaction() as tx:
+                cur = tx.execute(
+                    f"""UPDATE jobs SET status='queued', progress=0, error=NULL, message='Aguardando na fila',
+                           started_at=NULL, finished_at=NULL, updated_at=?
+                        WHERE id=? AND status IN ({','.join('?' * len(retryable))})""",
+                    (to_iso(utcnow()), job_id, *retryable),
+                )
+                return cur.rowcount > 0
+        except sqlite3.IntegrityError:
+            return False  # já existe outra tarefa ativa equivalente
+
+    def mark_running_as_interrupted(self) -> int:
+        now = to_iso(utcnow())
+        with self.db.transaction() as tx:
+            cur = tx.execute(
+                "UPDATE jobs SET status='interrupted', message='O ClipMonitor foi fechado durante a execução', "
+                "finished_at=?, updated_at=? WHERE status='running'",
+                (now, now),
+            )
+            return cur.rowcount
+
+    def delete(self, job_id: int) -> bool:
+        with self.db.transaction() as tx:
+            cur = tx.execute("DELETE FROM jobs WHERE id=? AND status != 'running'", (job_id,))
+            return cur.rowcount > 0
+
+    def clear_finished(self) -> int:
+        with self.db.transaction() as tx:
+            cur = tx.execute("DELETE FROM jobs WHERE status IN ('completed', 'cancelled')")
+            return cur.rowcount
+
+    def counts(self) -> dict[tuple[JobType, JobStatus], int]:
+        rows = self.db.query("SELECT job_type, status, COUNT(*) AS n FROM jobs GROUP BY job_type, status")
+        return {(JobType(r["job_type"]), JobStatus(r["status"])): r["n"] for r in rows}
+
+    def active_by_streamer(self) -> dict[int, Job]:
+        """Tarefa ativa mais relevante por streamer (captura em andamento tem prioridade)."""
+        rows = self.db.query(
+            f"""{_JOB_SELECT} WHERE j.streamer_id IS NOT NULL AND j.status IN ('queued', 'running')
+                ORDER BY CASE j.status WHEN 'running' THEN 0 ELSE 1 END,
+                         CASE j.job_type WHEN 'capture' THEN 0 ELSE 1 END, j.id"""
+        )
+        out: dict[int, Job] = {}
+        for r in rows:
+            out.setdefault(r["streamer_id"], _row_to_job(r))
+        return out

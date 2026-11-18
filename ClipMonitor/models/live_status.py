@@ -33,3 +33,4 @@ class LiveCheckResult:
     went_online: tuple[str, ...] = ()
     went_offline: tuple[str, ...] = ()
     error: str | None = None
+    events: tuple = ()  # tuple[StreamEvent, ...]

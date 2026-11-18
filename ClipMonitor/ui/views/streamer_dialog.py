@@ -7,7 +7,12 @@ import customtkinter as ctk
 
 from config import theme as t
 from models.streamer import Streamer
-from ui.components.widgets import Card, Entry, GhostButton, PrimaryButton, Switch, label, muted
+from config.settings import INTERVAL_PRESETS
+from ui.components.widgets import Card, Entry, GhostButton, PrimaryButton, Switch, label, muted, option_menu
+from utils.timeutils import format_interval
+
+DEFAULT_INTERVAL_LABEL = "Padrão (configurações)"
+INTERVAL_OPTIONS = {DEFAULT_INTERVAL_LABEL: None, **{format_interval(v): v for v in INTERVAL_PRESETS}}
 
 
 class StreamerDialog(ctk.CTkToplevel):
@@ -18,8 +23,8 @@ class StreamerDialog(ctk.CTkToplevel):
         editing = streamer is not None
         self.title("Editar streamer" if editing else "Adicionar streamer")
         self.configure(fg_color=t.BG)
-        self.geometry("540x720")
-        self.minsize(480, 700)
+        self.geometry("560x730")
+        self.minsize(520, 710)
         self.transient(app)
 
         card = Card(self)
@@ -56,8 +61,17 @@ class StreamerDialog(ctk.CTkToplevel):
         self.auth_note = Entry(card, "Como/quando a autorização foi dada (opcional)")
         field("Registro da autorização", self.auth_note)
 
-        self.monitoring = Switch(card, "Monitorar este canal")
-        self.monitoring.grid(row=r, column=0, sticky="w", padx=22, pady=(16, 0)); r += 1
+        mon_row = ctk.CTkFrame(card, fg_color="transparent")
+        mon_row.grid(row=r, column=0, sticky="ew", padx=22, pady=(16, 0)); r += 1
+        mon_row.grid_columnconfigure(0, weight=1)
+        self.monitoring = Switch(mon_row, "Monitorar este canal")
+        self.monitoring.grid(row=0, column=0, sticky="w")
+        muted(mon_row, "Verificar a cada").grid(row=0, column=1, padx=(0, 8))
+        self.interval = option_menu(mon_row, list(INTERVAL_OPTIONS), width=190)
+        self.interval.grid(row=0, column=2)
+        current = streamer.check_interval_seconds if editing else None
+        labels = {v: k for k, v in INTERVAL_OPTIONS.items()}
+        self.interval.set(labels.get(current, format_interval(current) if current else DEFAULT_INTERVAL_LABEL))
 
         label(card, "Observações", font=(t.FONT_FAMILY, 12, "bold")).grid(row=r, column=0, sticky="w", padx=22, pady=(14, 4)); r += 1
         self.notes = ctk.CTkTextbox(card, height=70, fg_color=t.SECONDARY, border_color=t.BORDER, border_width=2,
@@ -118,6 +132,7 @@ class StreamerDialog(ctk.CTkToplevel):
             authorized=bool(self.authorized.get()),
             authorization_note=self.auth_note.get(),
             monitoring_enabled=bool(self.monitoring.get()),
+            check_interval_seconds=INTERVAL_OPTIONS.get(self.interval.get(), base.check_interval_seconds),
             notes=self.notes.get("1.0", "end").strip(),
         )
 

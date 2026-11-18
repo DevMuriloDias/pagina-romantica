@@ -8,10 +8,11 @@ Local, single-user, free/open-source stack. UI is in Brazilian Portuguese.
 
 | Phase | Scope | Status |
 |---|---|---|
-| 1 — Foundation | Project structure, SQLite, desktop UI, streamer management, Twitch auth + live status, background polling | ✅ done |
-| 2 — Capture | Streamlink capture, processing queue, EventSub (WebSocket + Device Code Flow) | planned |
-| 3 — Detection | FFmpeg audio extraction, Silero VAD, loudness/chat-free moment scoring | planned |
-| 4 — Clips | Faster-Whisper (CPU int8) PT-BR subtitles, 9:16 render, clip library + approval | planned |
+| 1 — Foundation | Project structure, SQLite, desktop UI, streamer management, Twitch auth + live status | ✅ done |
+| 2 — Monitoring | Background monitoring worker, stream start/end events, per-streamer intervals, capture/processing status indicators, persistent job queue | ✅ done |
+| 3 — Capture | Streamlink capture handler (subscribes to `ONLINE` events), EventSub via WebSocket | planned |
+| 4 — Detection | FFmpeg audio extraction, Silero VAD, moment scoring | planned |
+| 5 — Clips | Faster-Whisper (CPU int8) PT-BR subtitles, 9:16 render, clip library + approval | planned |
 
 ## Setup (Windows 11, Python 3.11)
 
@@ -43,10 +44,12 @@ database/          SQLite connection (per-thread, WAL), versioned migrations, re
 models/            plain dataclasses (Streamer, LiveSession, StreamInfo, …)
 services/          business rules (StreamerService, TwitchService) + DI container
 twitch/            TwitchAuth (client-credentials, cached/auto-refreshed token), HelixClient
-monitoring/        LiveStatusChecker (one pass) + MonitorService (daemon thread, backoff)
-workers/           TaskRunner + UiDispatcher (thread → Tk main-loop handoff)
+monitoring/        stream_tracker (pure start/end state machine), LiveStatusChecker (one pass,
+                   per-streamer scheduling), EventBus (ONLINE/OFFLINE/TITLE/GAME events)
+workers/           MonitoringWorker (daemon thread, status, backoff), JobWorker (persistent
+                   queue with capture/processing lanes), TaskRunner + UiDispatcher
 ui/                CustomTkinter app, views and reusable widgets
-capture/ detection/ transcription/ video/   reserved for phases 2–4
+capture/ detection/ transcription/ video/   reserved for phases 3–5
 output/{pending,approved,rejected,thumbnails}
 data/clipmonitor.db, logs/clipmonitor.log   created at runtime (git-ignored)
 ```
@@ -56,8 +59,19 @@ Key decisions:
 - **App access token (client credentials)** is all Helix `/streams` and `/users` need: no login
   window, no local callback server. The token is cached in SQLite and refreshed on expiry or 401.
   EventSub over WebSocket requires a *user* token, so it is deferred to Phase 2 (Device Code Flow).
-- **Polling** checks up to 100 channels per Helix request; default 60 s, min 30 s. Errors back off
-  exponentially (max 15 min) and `429` honours `Ratelimit-Reset`.
+- **Polling** checks up to 100 channels per Helix request. Each streamer has its own due time
+  (global interval, default 60 s, or a per-streamer override, min 30 s); channels due within the
+  next 10 s are grouped into one request. Errors back off exponentially (max 15 min) and `429`
+  honours `Ratelimit-Reset`. Changing the interval wakes the worker immediately.
+- **Start/end detection** is a pure state machine (`monitoring/stream_tracker.py`). A stream is only
+  declared ended after N consecutive misses (default 2, configurable) because Helix occasionally
+  omits a live channel; the end time is the last time it was seen live. A new `stream_id` while live
+  is treated as end + new start. Events are stored in `stream_events` and published on the
+  `EventBus` after being committed — Phase 3 capture subscribes to `ONLINE` there.
+- **Job queue** lives in SQLite, so it survives restarts (jobs running at shutdown become
+  *Interrompida* and can be retried). Captures (I/O-bound) and processing (CPU-bound) have separate
+  concurrency limits so an hours-long recording never blocks transcription. A partial unique index
+  prevents duplicate active jobs (e.g. two captures of the same stream).
 - **Secrets at rest**: the Client Secret and token are encrypted with Windows DPAPI (bound to your
   Windows account), without extra dependencies.
 - **Threading**: Tkinter is touched only on the main thread; workers post callbacks to a queue

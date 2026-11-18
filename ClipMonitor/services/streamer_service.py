@@ -5,6 +5,7 @@ import logging
 import re
 from dataclasses import replace
 
+from config.settings import clamp_interval
 from database.repositories import ActivityRepository, StreamerRepository
 from models.streamer import Streamer
 from twitch.errors import TwitchError
@@ -54,8 +55,10 @@ class StreamerService:
             raise ValidationError(
                 "Para monitorar este canal, confirme que você tem autorização do streamer."
             )
+        interval = s.check_interval_seconds
         return replace(
             s,
+            check_interval_seconds=clamp_interval(interval) if interval else None,
             login=login,
             display_name=s.display_name.strip(),
             authorization_note=s.authorization_note.strip()[:500],

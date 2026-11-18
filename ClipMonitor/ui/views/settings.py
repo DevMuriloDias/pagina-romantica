@@ -13,6 +13,12 @@ from ui.components.widgets import Card, Entry, GhostButton, PageHeader, PrimaryB
 from ui.views.base import BaseView
 
 TWITCH_CONSOLE_URL = "https://dev.twitch.tv/console/apps"
+GRACE_OPTIONS = {
+    "Imediata (1 verificação)": 1,
+    "2 verificações seguidas (recomendado)": 2,
+    "3 verificações seguidas": 3,
+    "5 verificações seguidas": 5,
+}
 
 
 class SettingsView(BaseView):
@@ -65,12 +71,21 @@ class SettingsView(BaseView):
         self.interval_label.grid(row=0, column=1, padx=(12, 0))
         self._field(mon, "Intervalo de verificação", interval_row,
                     f"Entre {MIN_POLL_INTERVAL} s e 10 min. Valores menores detectam lives mais cedo.")
+        grace_row = ctk.CTkFrame(mon, fg_color="transparent")
+        grace_row.grid_columnconfigure(1, weight=1)
+        self.grace = self._menu(grace_row, list(GRACE_OPTIONS))
+        self.grace.grid(row=0, column=0, sticky="w")
+        self._field(mon, "Confirmação de fim da live", grace_row,
+                    "A Twitch às vezes omite um canal por instantes. Exigir mais de uma verificação "
+                    "evita registrar um falso fim de transmissão.")
+        muted(mon, "Cada streamer pode ter um intervalo próprio (Streamers → Editar).").grid(
+            row=self._next(mon), column=0, sticky="w", padx=20, pady=(10, 0))
         self.autostart = Switch(mon, "Iniciar monitoramento ao abrir o ClipMonitor")
         self.autostart.grid(row=self._next(mon), column=0, sticky="w", padx=20, pady=(14, 18))
 
         # ---- Processamento
         proc = self._section(scroll, 2, "Processamento de clipes",
-                             "Usado nas próximas fases (captura, transcrição e exportação).")
+                             "Usado pela fila de captura e processamento.")
         out_row = ctk.CTkFrame(proc, fg_color="transparent")
         out_row.grid_columnconfigure(0, weight=1)
         self.output_dir = Entry(out_row, "Pasta de saída")
@@ -80,12 +95,14 @@ class SettingsView(BaseView):
 
         grid = ctk.CTkFrame(proc, fg_color="transparent")
         grid.grid(row=self._next(proc), column=0, sticky="ew", padx=20, pady=(14, 18))
-        for i in range(3):
+        for i in range(4):
             grid.grid_columnconfigure(i, weight=1, uniform="p")
         self.whisper = self._option(grid, 0, "Modelo Whisper", list(WHISPER_MODELS))
-        self.clip_len = self._option(grid, 1, "Duração do clipe", ["30", "45", "60", "90"])
-        self.jobs = self._option(grid, 2, "Tarefas simultâneas", ["1", "2"])
-        muted(proc, "Para o i3-10100F recomendamos o modelo 'small' (int8) e 1 tarefa simultânea.").grid(
+        self.clip_len = self._option(grid, 1, "Duração do clipe (s)", ["30", "45", "60", "90"])
+        self.jobs = self._option(grid, 2, "Processamentos simultâneos", ["1", "2"])
+        self.captures = self._option(grid, 3, "Capturas simultâneas", ["1", "2", "3", "4"])
+        muted(proc, "Para o i3-10100F recomendamos o modelo 'small' (int8) e 1 processamento por vez. "
+                    "Capturas usam pouca CPU e rodam em paralelo ao processamento.", wraplength=760).grid(
             row=self._next(proc), column=0, sticky="w", padx=20, pady=(0, 18))
 
     # ------------------------------------------------------------ helpers
@@ -109,6 +126,14 @@ class SettingsView(BaseView):
         widget.grid(row=self._next(card), column=0, sticky="ew", padx=20)
         if hint:
             muted(card, hint).grid(row=self._next(card), column=0, sticky="w", padx=20, pady=(3, 0))
+
+    @staticmethod
+    def _menu(parent, values: list[str]) -> ctk.CTkOptionMenu:
+        return ctk.CTkOptionMenu(
+            parent, values=values, width=320, fg_color=t.SECONDARY, button_color=t.BORDER,
+            button_hover_color=t.CARD_HOVER, dropdown_fg_color=t.CARD, dropdown_hover_color=t.CARD_HOVER,
+            text_color=t.TEXT, height=36, corner_radius=10, font=t.FONT_BODY,
+        )
 
     def _option(self, parent, col: int, title: str, values: list[str]) -> ctk.CTkOptionMenu:
         box = ctk.CTkFrame(parent, fg_color="transparent")
@@ -151,10 +176,13 @@ class SettingsView(BaseView):
         self.interval.set(interval)
         self._on_interval(interval)
         self.autostart.select() if s.start_monitoring_on_launch else self.autostart.deselect()
+        grace_labels = {v: k for k, v in GRACE_OPTIONS.items()}
+        self.grace.set(grace_labels.get(s.offline_grace_checks, f"{s.offline_grace_checks} verificações seguidas"))
         self._set_entry(self.output_dir, s.output_dir)
         self.whisper.set(s.whisper_model)
         self.clip_len.set(str(s.clip_duration_seconds))
         self.jobs.set(str(s.max_parallel_jobs))
+        self.captures.set(str(s.max_concurrent_captures))
 
     def _collect(self):
         current = self.ctx.settings_repo.load()
@@ -164,10 +192,12 @@ class SettingsView(BaseView):
             twitch_client_secret=self.client_secret.get(),
             poll_interval_seconds=int(self.interval.get()),
             start_monitoring_on_launch=bool(self.autostart.get()),
+            offline_grace_checks=GRACE_OPTIONS.get(self.grace.get(), current.offline_grace_checks),
             output_dir=self.output_dir.get(),
             whisper_model=self.whisper.get(),
             clip_duration_seconds=int(self.clip_len.get()),
             max_parallel_jobs=int(self.jobs.get()),
+            max_concurrent_captures=int(self.captures.get()),
         )
 
     def save(self) -> None:
@@ -178,7 +208,7 @@ class SettingsView(BaseView):
             self.app.toast(f"Não foi possível salvar: {exc}", "error")
             return
         self.ctx.twitch.reset()
-        self.ctx.monitor.trigger_now()
+        self.ctx.monitor.trigger_now()  # aplica o novo intervalo imediatamente
         self.app.toast("Configurações salvas.", "success")
         self.refresh()
 

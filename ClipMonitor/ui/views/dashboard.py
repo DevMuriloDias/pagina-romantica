@@ -4,11 +4,13 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from config import theme as t
+from models.status import MonitorState
+from services.status_service import activity_label
 from ui.components.widgets import (
-    Avatar, Badge, Card, EmptyState, GhostButton, PageHeader, PrimaryButton, StatCard, label, muted,
+    STATE_COLORS, Avatar, Badge, Card, EmptyState, GhostButton, PageHeader, StatCard, StatusRow, label, muted,
 )
 from ui.views.base import BaseView
-from utils.timeutils import format_duration, format_relative, format_viewers, utcnow
+from utils.timeutils import format_countdown, format_duration, format_relative, format_viewers, utcnow
 
 
 class DashboardView(BaseView):
@@ -27,8 +29,8 @@ class DashboardView(BaseView):
         self.stat_total = StatCard(self.stats, "Streamers", hint="cadastrados")
         self.stat_live = StatCard(self.stats, "Ao vivo agora", hint="canais transmitindo", accent=True)
         self.stat_monitored = StatCard(self.stats, "Monitorados", hint="autorizados e ativos")
-        self.stat_clips = StatCard(self.stats, "Clipes", hint="disponível na Fase 4")
-        self._stat_cards = [self.stat_total, self.stat_live, self.stat_monitored, self.stat_clips]
+        self.stat_queue = StatCard(self.stats, "Fila", hint="capturas e processamentos")
+        self._stat_cards = [self.stat_total, self.stat_live, self.stat_monitored, self.stat_queue]
         self._stat_cols = 0
         self.stats.bind("<Configure>", self._layout_stats)
         self._layout_stats()
@@ -50,8 +52,25 @@ class DashboardView(BaseView):
         self.live_list.grid(row=1, column=0, columnspan=2, sticky="nsew", padx=8, pady=(0, 10))
         self.live_list.grid_columnconfigure(0, weight=1)
 
-        act_card = Card(body)
-        act_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        right = ctk.CTkFrame(body, fg_color="transparent")
+        right.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        right.grid_columnconfigure(0, weight=1)
+        right.grid_rowconfigure(1, weight=1)
+
+        sys_card = Card(right)
+        sys_card.grid(row=0, column=0, sticky="ew", pady=(0, 16))
+        sys_card.grid_columnconfigure(0, weight=1)
+        label(sys_card, "Status do sistema", font=t.FONT_SUBTITLE).grid(row=0, column=0, sticky="w", padx=18, pady=(16, 6))
+        self.row_monitor = StatusRow(sys_card, "Monitoramento")
+        self.row_next = StatusRow(sys_card, "Próxima verificação")
+        self.row_capture = StatusRow(sys_card, "Captura (Streamlink)")
+        self.row_ffmpeg = StatusRow(sys_card, "Processamento (FFmpeg)")
+        self.row_queue = StatusRow(sys_card, "Fila de tarefas")
+        for i, row in enumerate([self.row_monitor, self.row_next, self.row_capture, self.row_ffmpeg, self.row_queue], 1):
+            row.grid(row=i, column=0, sticky="ew", padx=18, pady=(3, 14 if i == 5 else 3))
+
+        act_card = Card(right)
+        act_card.grid(row=1, column=0, sticky="nsew")
         act_card.grid_columnconfigure(0, weight=1)
         act_card.grid_rowconfigure(1, weight=1)
         label(act_card, "Atividade recente", font=t.FONT_SUBTITLE).grid(row=0, column=0, sticky="w", padx=18, pady=(16, 8))
@@ -76,12 +95,47 @@ class DashboardView(BaseView):
         self.stat_total.set(str(counts["total"]))
         self.stat_live.set(str(counts["live"]))
         self.stat_monitored.set(str(counts["monitored"]))
-        self.stat_clips.set("0")
+        p = self.app.pipeline
+        active = p.capture_running + p.capture_queued + p.processing_running + p.processing_queued
+        self.stat_queue.set(str(active), f"{p.failed} com falha" if p.failed else "capturas e processamentos")
+        self._render_system()
         streamers = self.ctx.streamers.list()
         self._render_live([s for s in streamers if s.is_live])
         checked = [s.last_checked_at for s in streamers if s.last_checked_at]
         self.last_check.configure(text=f"Última verificação: {format_relative(max(checked))}" if checked else "")
         self._render_activity()
+
+    def tick(self) -> None:
+        st = self.ctx.monitor.status
+        color = STATE_COLORS[st.state.value]
+        self.row_monitor.set(st.state.label.replace("Monitoramento parado", "Parado"), color)
+        if st.state is MonitorState.CHECKING:
+            self.row_next.set("agora", t.ACCENT)
+        elif st.running and st.next_check_at:
+            self.row_next.set(f"em {format_countdown((st.next_check_at - utcnow()).total_seconds())}", color)
+        else:
+            self.row_next.set("—", t.TEXT_DIM)
+
+    def _render_system(self) -> None:
+        self.tick()
+        tools = self.ctx.tools.cached()
+        for row, key in ((self.row_capture, "streamlink"), (self.row_ffmpeg, "ffmpeg")):
+            info = (tools or {}).get(key)
+            if tools is None:
+                row.set("verificando…", t.TEXT_DIM)
+            elif info and info.available:
+                row.set(f"instalado {info.version}".strip(), t.ACCENT)
+            else:
+                row.set("não encontrado", t.WARNING)
+        p = self.app.pipeline
+        if p.capture_running or p.processing_running:
+            self.row_queue.set(f"{p.capture_running + p.processing_running} em andamento", t.ACCENT)
+        elif p.capture_queued or p.processing_queued:
+            self.row_queue.set(f"{p.capture_queued + p.processing_queued} aguardando", t.WARNING)
+        elif p.failed:
+            self.row_queue.set(f"{p.failed} com falha", t.DANGER)
+        else:
+            self.row_queue.set("ociosa", t.TEXT_DIM)
 
     def _clear(self, frame) -> None:
         for w in frame.winfo_children():
@@ -105,10 +159,20 @@ class DashboardView(BaseView):
             row.grid(row=i, column=0, sticky="ew", pady=4, padx=4)
             row.grid_columnconfigure(1, weight=1)
             Avatar(row, s.name, live=True).grid(row=0, column=0, rowspan=2, padx=12, pady=10)
-            label(row, s.name, font=(t.FONT_FAMILY, 13, "bold")).grid(row=0, column=1, sticky="w", pady=(10, 0))
-            title = (s.stream_title or "")[:90]
+            top = ctk.CTkFrame(row, fg_color="transparent")
+            top.grid(row=0, column=1, columnspan=2, sticky="w", pady=(10, 0))
+            label(top, s.name, font=(t.FONT_FAMILY, 13, "bold")).pack(side="left")
+            if s.offline_misses:
+                Badge(top, "CONFIRMANDO FIM", "warn").pack(side="left", padx=(8, 0))
+            else:
+                Badge(top, "AO VIVO", "live").pack(side="left", padx=(8, 0))
+            activity = self.app.pipeline.per_streamer.get(s.id)
+            if activity:
+                text, style = activity_label(activity)
+                Badge(top, text, style).pack(side="left", padx=(6, 0))
+            title = s.stream_title or ""
+            title = title if len(title) <= 34 else title[:33] + "…"
             muted(row, f"{s.game_name or 'Sem categoria'} · {title}").grid(row=1, column=1, sticky="w", pady=(0, 10))
-            Badge(row, "AO VIVO", "live").grid(row=0, column=2, padx=12, pady=(10, 0), sticky="e")
             uptime = format_duration((now - s.live_since).total_seconds()) if s.live_since else "—"
             muted(row, f"👁 {format_viewers(s.viewer_count)}  ·  ⏱ {uptime}").grid(row=1, column=2, padx=12, pady=(0, 10), sticky="e")
 

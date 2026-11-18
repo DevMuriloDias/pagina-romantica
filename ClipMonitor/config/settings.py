@@ -41,12 +41,16 @@ class AppSettings:
     twitch_client_id: str = ""
     twitch_client_secret: str = ""
     poll_interval_seconds: int = 60
+    # Quantas verificações seguidas sem a live são necessárias para declarar o fim.
+    # Evita falsos "encerrou" quando a API da Twitch omite um canal por instantes.
+    offline_grace_checks: int = 2
     start_monitoring_on_launch: bool = False
     output_dir: str = field(default_factory=lambda: str(OUTPUT_DIR))
     # Reservado para fases seguintes (já expostos na tela de configurações).
     whisper_model: str = "small"
     clip_duration_seconds: int = 45
     max_parallel_jobs: int = 1
+    max_concurrent_captures: int = 2
 
     SECRET_FIELDS = ("twitch_client_secret",)
 
@@ -59,20 +63,29 @@ class AppSettings:
 
     def normalized(self) -> "AppSettings":
         """Retorna uma cópia com valores dentro dos limites válidos."""
-        interval = max(MIN_POLL_INTERVAL, min(MAX_POLL_INTERVAL, int(self.poll_interval_seconds)))
+        interval = clamp_interval(self.poll_interval_seconds)
         return AppSettings(
             twitch_client_id=self.twitch_client_id.strip(),
             twitch_client_secret=self.twitch_client_secret.strip(),
             poll_interval_seconds=interval,
+            offline_grace_checks=max(1, min(5, int(self.offline_grace_checks))),
             start_monitoring_on_launch=bool(self.start_monitoring_on_launch),
             output_dir=self.output_dir.strip() or str(OUTPUT_DIR),
             whisper_model=self.whisper_model,
             clip_duration_seconds=max(10, min(180, int(self.clip_duration_seconds))),
             max_parallel_jobs=max(1, min(4, int(self.max_parallel_jobs))),
+            max_concurrent_captures=max(1, min(4, int(self.max_concurrent_captures))),
         )
 
 
 WHISPER_MODELS = ("tiny", "base", "small", "medium")
+
+# Opções de intervalo exibidas na UI (segundos).
+INTERVAL_PRESETS = (30, 45, 60, 90, 120, 300, 600)
+
+
+def clamp_interval(seconds: int) -> int:
+    return max(MIN_POLL_INTERVAL, min(MAX_POLL_INTERVAL, int(seconds)))
 
 
 def ensure_directories(output_dir: str | Path | None = None) -> None:
