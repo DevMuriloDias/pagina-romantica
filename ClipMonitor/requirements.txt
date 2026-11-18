@@ -1,0 +1,13 @@
+# ClipMonitor — dependências (Python 3.11, Windows 11)
+# Fase 1
+customtkinter==5.2.2
+requests>=2.31,<3
+
+# Testes
+pytest>=8.0
+
+# Fases seguintes (instaladas quando forem implementadas):
+# streamlink>=6.7
+# faster-whisper>=1.0      # CPU, int8
+# silero-vad>=5.1
+# FFmpeg: binário externo (https://www.gyan.dev/ffmpeg/builds/) no PATH

@@ -1,0 +1,28 @@
+"""Paleta e tipografia da interface (tema escuro premium)."""
+
+BG = "#090B0A"
+SECONDARY = "#111512"
+CARD = "#171D19"
+CARD_HOVER = "#1E2620"
+BORDER = "#232B26"
+ACCENT = "#00FF88"
+ACCENT_HOVER = "#00D673"
+ACCENT_TEXT = "#04140C"  # texto sobre o verde
+ACCENT_DIM = "#0F3B26"  # seleção discreta
+TEXT = "#FFFFFF"
+TEXT_MUTED = "#8A938D"
+TEXT_DIM = "#5C645F"
+DANGER = "#FF4D5E"
+DANGER_HOVER = "#D93A4A"
+WARNING = "#FFB547"
+LIVE = "#FF3B5C"
+
+FONT_FAMILY = "Segoe UI"
+FONT_TITLE = (FONT_FAMILY, 24, "bold")
+FONT_SUBTITLE = (FONT_FAMILY, 15, "bold")
+FONT_BODY = (FONT_FAMILY, 13)
+FONT_SMALL = (FONT_FAMILY, 11)
+FONT_STAT = (FONT_FAMILY, 30, "bold")
+
+RADIUS = 12
+PAD = 20
