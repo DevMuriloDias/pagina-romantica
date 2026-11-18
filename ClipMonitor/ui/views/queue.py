@@ -4,12 +4,12 @@ from __future__ import annotations
 import customtkinter as ctk
 
 from config import theme as t
-from models.job import Job, JobStatus
+from models.job import Job, JobStatus, eta_seconds
 from ui.components.widgets import (
     Badge, Card, EmptyState, GhostButton, PageHeader, ProgressBar, StatCard, StatusRow, confirm, label, muted,
 )
 from ui.views.base import BaseView
-from utils.timeutils import format_relative
+from utils.timeutils import format_countdown, format_relative, utcnow
 
 FILTERS = {
     "Ativas": (JobStatus.QUEUED, JobStatus.RUNNING),
@@ -36,8 +36,9 @@ class QueueView(BaseView):
         header = PageHeader(self, "Fila e capturas", "Acompanhe gravações e etapas de processamento.")
         header.grid(row=0, column=0, sticky="ew", pady=(0, t.PAD))
         GhostButton(header.actions, "Limpar concluídas", self._clear_finished, width=150).pack(side="right")
-        GhostButton(header.actions, "↻  Verificar ferramentas", lambda: self.app.refresh_tools(notify=True),
-                    width=190).pack(side="right", padx=(0, 8))
+        GhostButton(header.actions, "↻ Repetir falhas", self._retry_all, width=140).pack(side="right", padx=(0, 8))
+        self.pause_btn = GhostButton(header.actions, "⏸ Pausar processamento", self._toggle_pause, width=190)
+        self.pause_btn.pack(side="right", padx=(0, 8))
 
         stats = ctk.CTkFrame(self, fg_color="transparent")
         stats.grid(row=1, column=0, sticky="ew")
@@ -59,8 +60,10 @@ class QueueView(BaseView):
         self.t_worker = StatusRow(tools, "Executor de tarefas")
         for i, row in enumerate([self.t_streamlink, self.t_ffmpeg, self.t_worker]):
             row.grid(row=0, column=i, sticky="ew", padx=18, pady=(14, 4))
-        self.tools_hint = muted(tools, "", wraplength=900)
-        self.tools_hint.grid(row=1, column=0, columnspan=3, sticky="w", padx=18, pady=(0, 12))
+        self.tools_hint = muted(tools, "", wraplength=760)
+        self.tools_hint.grid(row=1, column=0, columnspan=2, sticky="w", padx=18, pady=(0, 12))
+        GhostButton(tools, "↻ Verificar ferramentas", lambda: self.app.refresh_tools(notify=True),
+                    width=180, height=30).grid(row=1, column=2, sticky="e", padx=18, pady=(0, 12))
 
         bar = ctk.CTkFrame(self, fg_color="transparent")
         bar.grid(row=3, column=0, sticky="ew", pady=(16, 10))
@@ -123,7 +126,13 @@ class QueueView(BaseView):
                 row.set("não encontrado", t.WARNING)
                 if info and info.hint:
                     hints.append(f"{info.name}: {info.hint}")
-        if self.app.pipeline.worker_running:
+        paused = self.ctx.jobs.processing_paused
+        self.pause_btn.configure(text="▶ Retomar processamento" if paused else "⏸ Pausar processamento",
+                                 text_color=t.WARNING if paused else t.TEXT)
+        if paused:
+            self.t_worker.set("processamento pausado", t.WARNING)
+            hints.insert(0, "Processamento pausado: as gravações continuam; análise, transcrição e vídeos aguardam.")
+        elif self.app.pipeline.worker_running:
             self.t_worker.set("ativo", t.ACCENT)
         else:
             self.t_worker.set("parado", t.TEXT_DIM)
@@ -161,8 +170,11 @@ class QueueView(BaseView):
 
         actions = ctk.CTkFrame(card, fg_color="transparent")
         actions.grid(row=0, column=3, rowspan=3, padx=14)
+        if job.status is JobStatus.QUEUED and not job.job_type.is_capture:
+            GhostButton(actions, "↑ Priorizar", lambda: self._prioritize(job), width=100).pack(side="left", padx=2)
         if job.status.is_active:
-            GhostButton(actions, "Cancelar", lambda: self._cancel(job), danger=True, width=90).pack(side="left", padx=2)
+            label_text = "Parar" if job.job_type.is_capture and job.status is JobStatus.RUNNING else "Cancelar"
+            GhostButton(actions, label_text, lambda: self._cancel(job), danger=True, width=90).pack(side="left", padx=2)
         if job.status.is_retryable:
             GhostButton(actions, "Tentar novamente", lambda: self._retry(job), width=140).pack(side="left", padx=2)
         if job.status is not JobStatus.RUNNING:
@@ -187,12 +199,34 @@ class QueueView(BaseView):
         row["message"].configure(text=f"{text}{suffix}".strip(" ·"), text_color=color)
         if not (job.job_type.is_capture and job.status is JobStatus.RUNNING):
             row["progress"].set(job.progress)
-        row["pct"].configure(text=f"{int(job.progress * 100)}%")
+        eta = eta_seconds(job, utcnow())
+        row["pct"].configure(text=f"{int(job.progress * 100)}%" + (f" · falta ~{format_countdown(eta)}" if eta else ""))
 
     # ------------------------------------------------------------ ações
     def _cancel(self, job: Job) -> None:
         if self.ctx.jobs.cancel(job.id):
-            self.app.toast("Cancelamento solicitado.", "info")
+            # Captura cancelada pelo usuário: fecha o arquivo atual, analisa o que já foi gravado e
+            # não é reiniciada automaticamente.
+            running_capture = job.job_type.is_capture and job.status is JobStatus.RUNNING
+            self.app.toast("Encerrando gravação… o que já foi gravado será analisado." if running_capture
+                           else "Cancelamento solicitado.", "info")
+        self.app.refresh_current()
+
+    def _toggle_pause(self) -> None:
+        paused = not self.ctx.jobs.processing_paused
+        self.ctx.jobs.set_processing_paused(paused)
+        self.app.toast("Processamento pausado. As gravações continuam." if paused else "Processamento retomado.",
+                       "warn" if paused else "success")
+        self.app.refresh_current()
+
+    def _retry_all(self) -> None:
+        n = self.ctx.jobs.retry_failed()
+        self.app.toast(f"{n} tarefa(s) recolocada(s) na fila." if n else "Nenhuma tarefa com falha.", "info")
+        self.app.refresh_current()
+
+    def _prioritize(self, job: Job) -> None:
+        if self.ctx.jobs.prioritize(job.id):
+            self.app.toast("Tarefa movida para o início da fila.", "success")
         self.app.refresh_current()
 
     def _retry(self, job: Job) -> None:

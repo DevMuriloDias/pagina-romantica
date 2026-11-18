@@ -17,6 +17,7 @@ from models.job import Job, JobStatus, JobType
 from models.live_status import StreamInfo
 from models.streamer import LiveSession, Streamer
 from utils import secrets
+from utils.logging_setup import register_secret
 from utils.timeutils import from_iso, to_iso, utcnow
 
 
@@ -290,7 +291,9 @@ class SettingsRepository:
                     data[f.name] = raw
             except ValueError:
                 continue
-        return AppSettings(**data)
+        result = AppSettings(**data)
+        register_secret(result.twitch_client_secret)
+        return result
 
     def save(self, settings: AppSettings) -> AppSettings:
         settings = settings.normalized()
@@ -320,6 +323,7 @@ class SettingsRepository:
         return secrets.unprotect(token), expires
 
     def save_cached_token(self, token: str, expires_at: datetime) -> None:
+        register_secret(token)
         self.set_raw({self.TOKEN_KEY: secrets.protect(token), self.TOKEN_EXPIRY_KEY: to_iso(expires_at) or ""})
 
     def clear_cached_token(self) -> None:
@@ -484,6 +488,17 @@ class JobRepository:
                 return cur.rowcount > 0
         except sqlite3.IntegrityError:
             return False  # já existe outra tarefa ativa equivalente
+
+    def latest_by_dedupe(self, key: str) -> Job | None:
+        row = self.db.query_one(f"{_JOB_SELECT} WHERE j.dedupe_key = ? ORDER BY j.id DESC LIMIT 1", (key,))
+        return _row_to_job(row) if row else None
+
+    def set_priority_top(self, job_id: int) -> bool:
+        with self.db.transaction() as tx:
+            top = tx.execute("SELECT COALESCE(MAX(priority), 0) FROM jobs WHERE status='queued'").fetchone()[0]
+            cur = tx.execute("UPDATE jobs SET priority=?, updated_at=? WHERE id=? AND status='queued'",
+                             (top + 1, to_iso(utcnow()), job_id))
+            return cur.rowcount > 0
 
     def mark_running_as_interrupted(self) -> int:
         now = to_iso(utcnow())

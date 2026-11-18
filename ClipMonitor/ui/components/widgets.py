@@ -142,7 +142,9 @@ class Toast(ctk.CTkFrame):
 
     def __init__(self, root, message: str, kind: str = "info", duration_ms: int = 3500):
         super().__init__(root, fg_color=t.CARD, corner_radius=10, border_width=1, border_color=self.COLORS[kind])
-        ctk.CTkFrame(self, width=4, fg_color=self.COLORS[kind], corner_radius=2).pack(side="left", fill="y", padx=(8, 0), pady=8)
+        # height=1: sem isso o CTkFrame nasce com 200 px e estica a notificação inteira.
+        ctk.CTkFrame(self, width=4, height=1, fg_color=self.COLORS[kind], corner_radius=2).pack(
+            side="left", fill="y", padx=(8, 0), pady=8)
         ctk.CTkLabel(self, text=message, font=t.FONT_BODY, text_color=t.TEXT, wraplength=340, justify="left").pack(
             side="left", padx=12, pady=12
         )

@@ -50,6 +50,8 @@ class MonitoringWorker:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._force = False
+        # Executados (nesta thread) após cada verificação bem-sucedida.
+        self.after_check: list[Callable[[], object]] = []
 
     # ------------------------------------------------------------ status
     @property
@@ -163,6 +165,12 @@ class MonitoringWorker:
                 last_checked=result.checked if result.error is None else prev.last_checked,
                 last_live=result.live if result.error is None else prev.last_live,
             )
+            if result.error is None:
+                for hook in list(self.after_check):
+                    try:
+                        hook()
+                    except Exception:  # noqa: BLE001
+                        log.exception("Falha em rotina pós-verificação")
             try:
                 self.on_result(result)
             except Exception:  # noqa: BLE001

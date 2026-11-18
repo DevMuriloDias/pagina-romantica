@@ -13,11 +13,12 @@ from models.status import MonitorState, MonitorStatus, PipelineStatus
 from services.container import AppContext
 from ui.components.widgets import STATE_COLORS, Toast, label, muted
 from ui.views.dashboard import DashboardView
+from ui.views.library import LibraryView
 from ui.views.moments import MomentsView
-from ui.views.placeholder import PlaceholderView
 from ui.views.queue import QueueView
 from ui.views.settings import SettingsView
 from ui.views.streamers import StreamersView
+from utils.errors import friendly, install_global_handlers
 from utils.timeutils import format_countdown, utcnow
 from workers.task_runner import TaskRunner, UiDispatcher
 
@@ -34,7 +35,7 @@ NAV = [
 
 
 class ClipMonitorApp(ctk.CTk):
-    def __init__(self, ctx: AppContext):
+    def __init__(self, ctx: AppContext, start_minimized: bool = False, allow_auto_monitor: bool = True):
         ctk.set_appearance_mode("dark")
         super().__init__(fg_color=t.BG)
         self.ctx = ctx
@@ -61,10 +62,7 @@ class ClipMonitorApp(ctk.CTk):
             "streamers": StreamersView(self.content, self),
             "moments": MomentsView(self.content, self),
             "queue": QueueView(self.content, self),
-            "library": PlaceholderView(
-                self.content, self, "Biblioteca", "Seus clipes gerados, prontos para revisar e publicar.",
-                "Fase 4", "Os momentos aprovados viram clipes verticais 9:16 com legendas em português, listados aqui.",
-            ),
+            "library": LibraryView(self.content, self),
             "settings": SettingsView(self.content, self),
         }
         self.current: str | None = None
@@ -79,6 +77,8 @@ class ClipMonitorApp(ctk.CTk):
         )
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
+        # Erros inesperados (UI e threads): registro completo no log + aviso curto na tela.
+        install_global_handlers(lambda exc: self.dispatcher.post(self._report_error, exc))
         self.show("dashboard")
         self._pump()
         self._tick_fast()
@@ -91,9 +91,14 @@ class ClipMonitorApp(ctk.CTk):
         self.refresh_tools()
         self._maintenance()
         settings = ctx.settings_repo.load()
-        if settings.start_monitoring_on_launch and settings.has_twitch_credentials():
+        if allow_auto_monitor and settings.start_monitoring_on_launch and settings.has_twitch_credentials():
             ctx.monitor.start()
         self._on_monitor_status(ctx.monitor.status)
+        if start_minimized or settings.start_minimized:
+            # Antes do mainloop: o CTk registra o pedido e não exibe a janela "normal" primeiro.
+            self.iconify()
+        if not ctx.db.integrity_ok():
+            self.toast("O banco de dados apresentou problemas de integridade. Veja Configurações → Diagnóstico.", "error")
 
     # ------------------------------------------------------------ layout
     def _build_sidebar(self) -> None:
@@ -329,6 +334,16 @@ class ClipMonitorApp(ctk.CTk):
         self.refresh_current()
         self.after(30_000, self._tick_slow)
 
+    def report_callback_exception(self, exc_type, exc, tb) -> None:  # chamado pelo Tk
+        log.error("Erro na interface", exc_info=(exc_type, exc, tb))
+        self._report_error(exc)
+
+    def _report_error(self, exc: BaseException) -> None:
+        try:
+            self.toast(f"Erro inesperado: {friendly(exc)} (detalhes em Configurações → Diagnóstico)", "error")
+        except Exception:  # noqa: BLE001 - janela já fechando
+            pass
+
     def _maintenance(self) -> None:
         """Retenção de gravações: a cada hora, em segundo plano."""
         self.runner.submit(self.ctx.capture.purge_expired)
@@ -345,11 +360,24 @@ class ClipMonitorApp(ctk.CTk):
         self.refresh_current()
 
     def stop_capture(self, streamer_id: int) -> None:
-        if self.ctx.capture.request_stop(streamer_id):
+        job = self.ctx.job_repo.active_by_streamer().get(streamer_id)
+        if job and job.job_type.is_capture and self.ctx.jobs.cancel(job.id):
             self.toast("Encerrando gravação… os segmentos gravados serão analisados.", "info")
         self.refresh_current()
 
     def _on_close(self) -> None:
+        p = self.ctx.status.pipeline()
+        if p.capture_running or p.processing_running:
+            from ui.components.widgets import confirm
+
+            parts = []
+            if p.capture_running:
+                parts.append(f"{p.capture_running} gravação(ões) em andamento serão encerradas (o que já foi "
+                             "gravado será analisado na próxima abertura).")
+            if p.processing_running:
+                parts.append("O processamento em andamento será interrompido e poderá ser retomado depois.")
+            if not confirm(self, "Fechar o ClipMonitor?", " ".join(parts), "Fechar mesmo assim", danger=True):
+                return
         log.info("Encerrando aplicação")
         self._unsubscribe()
         self.runner.shutdown()

@@ -8,6 +8,7 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 from config import theme as t
+from config import settings as cfg
 from config.settings import MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, QUALITY_PRESETS, WHISPER_MODELS, ensure_directories
 from ui.components.widgets import Card, Entry, GhostButton, PageHeader, PrimaryButton, Switch, label, muted
 from ui.views.base import BaseView
@@ -180,6 +181,30 @@ class SettingsView(BaseView):
                    "leva cerca de 1 minuto no i3-10100F.", wraplength=760).grid(
             row=self._next(vid), column=0, sticky="w", padx=20, pady=(8, 18))
 
+        # ---- Inicialização
+        boot = self._section(scroll, 5, "Inicialização",
+                             "Deixe o ClipMonitor pronto sem precisar abri-lo manualmente.")
+        self.autostart_sw = Switch(boot, "Iniciar junto com o Windows", command=self._toggle_autostart)
+        self.autostart_sw.grid(row=self._next(boot), column=0, sticky="w", padx=20, pady=(14, 0))
+        self.autostart_hint = muted(boot, "", wraplength=760)
+        self.autostart_hint.grid(row=self._next(boot), column=0, sticky="w", padx=20, pady=(4, 0))
+        self.start_min = Switch(boot, "Abrir minimizado na barra de tarefas")
+        self.start_min.grid(row=self._next(boot), column=0, sticky="w", padx=20, pady=(12, 0))
+        muted(boot, "Combine com 'Iniciar monitoramento ao abrir' (seção Monitoramento) para gravar lives "
+                    "autorizadas sem nenhuma ação sua. Tarefas pendentes na fila são retomadas ao abrir.",
+              wraplength=760).grid(row=self._next(boot), column=0, sticky="w", padx=20, pady=(8, 18))
+
+        # ---- Diagnóstico
+        diag = self._section(scroll, 6, "Diagnóstico",
+                             "Registros de erros e informações úteis para resolver problemas.")
+        self.diag_info = label(diag, "", font=t.FONT_SMALL, color=t.TEXT_MUTED, wraplength=760)
+        self.diag_info.grid(row=self._next(diag), column=0, sticky="w", padx=20, pady=(12, 0))
+        drow = ctk.CTkFrame(diag, fg_color="transparent")
+        drow.grid(row=self._next(diag), column=0, sticky="w", padx=20, pady=(12, 18))
+        GhostButton(drow, "Ver registros", self._show_logs, width=130).pack(side="left")
+        GhostButton(drow, "Abrir pasta de registros", lambda: self._open(cfg.LOG_DIR), width=190).pack(side="left", padx=8)
+        GhostButton(drow, "Fazer backup do banco", self._backup, width=180).pack(side="left")
+
     # ------------------------------------------------------------ helpers
     def _section(self, parent, row: int, title: str, subtitle: str) -> Card:
         card = Card(parent)
@@ -221,6 +246,90 @@ class SettingsView(BaseView):
         )
         menu.pack(fill="x")
         return menu
+
+    # ------------------------------------------------------------ inicialização / diagnóstico
+    def _refresh_boot(self) -> None:
+        a = self.ctx.autostart
+        if not a.supported:
+            self.autostart_sw.deselect()
+            self.autostart_sw.configure(state="disabled")
+            self.autostart_hint.configure(text="Disponível apenas no Windows.")
+            return
+        self.autostart_sw.configure(state="normal")
+        self.autostart_sw.select() if a.is_enabled() else self.autostart_sw.deselect()
+        if a.is_enabled() and not a.is_current():
+            self.autostart_hint.configure(text="O item de inicialização aponta para outra pasta. Desative e "
+                                               "ative de novo para atualizar.", text_color=t.WARNING)
+        else:
+            self.autostart_hint.configure(text="Fica em Gerenciador de Tarefas → Aplicativos de inicialização "
+                                               "(não exige administrador).", text_color=t.TEXT_MUTED)
+
+    def _toggle_autostart(self) -> None:
+        try:
+            self.ctx.autostart.set(bool(self.autostart_sw.get()))
+            self.app.toast("Inicialização com o Windows " + ("ativada." if self.autostart_sw.get() else "desativada."),
+                           "success")
+        except Exception as exc:  # noqa: BLE001 - registro bloqueado por política, etc.
+            self.app.toast(f"Não foi possível alterar a inicialização: {exc}", "error")
+        self._refresh_boot()
+
+    def _refresh_diag(self) -> None:
+        import shutil
+        import sys
+
+        tools = self.ctx.tools.cached() or {}
+        tool_text = " · ".join(f"{i.name} {i.version or ('ok' if i.available else 'ausente')}" for i in tools.values())
+        try:
+            free = shutil.disk_usage(self.ctx.settings_repo.load().output_dir).free / 1024 ** 3
+            disk = f"{free:.0f} GB livres na pasta de saída"
+        except OSError:
+            disk = "pasta de saída inacessível"
+        db_ok = "íntegro" if self.ctx.db.integrity_ok() else "COM PROBLEMAS — faça um backup"
+        self.diag_info.configure(text=(
+            f"ClipMonitor {cfg.APP_VERSION} · Python {sys.version.split()[0]} · {tool_text or 'ferramentas não verificadas'}\n"
+            f"Banco de dados: {self.ctx.db.path} ({db_ok})\n"
+            f"Registros: {cfg.LOG_DIR} · {disk}"))
+
+    def _show_logs(self) -> None:
+        from utils.logging_setup import LOG_FILE, tail
+
+        win = ctk.CTkToplevel(self.app)
+        win.title("Registros do ClipMonitor")
+        win.geometry("980x620")
+        win.configure(fg_color=t.BG)
+        win.transient(self.app)
+        box = ctk.CTkTextbox(win, fg_color=t.SECONDARY, text_color=t.TEXT, font=("Consolas", 11), wrap="none")
+        box.pack(fill="both", expand=True, padx=12, pady=(12, 6))
+        lines = tail(cfg.LOG_DIR / LOG_FILE, 500)
+        box.insert("1.0", "".join(lines) or "Nenhum registro ainda.")
+        for tag, color in (("erro", t.DANGER), ("aviso", t.WARNING)):
+            box.tag_config(tag, foreground=color)
+        for i, line in enumerate(lines, start=1):
+            if "[ERROR]" in line or "[CRITICAL]" in line:
+                box.tag_add("erro", f"{i}.0", f"{i}.end")
+            elif "[WARNING]" in line:
+                box.tag_add("aviso", f"{i}.0", f"{i}.end")
+        box.configure(state="disabled")
+        box.see("end")
+        muted(win, "Segredos (Client Secret e tokens) são removidos automaticamente antes de gravar o registro.").pack(
+            anchor="w", padx=14, pady=(0, 10))
+
+    def _backup(self) -> None:
+        from utils.timeutils import utcnow
+
+        try:
+            path = self.ctx.db.backup(f"manual-{utcnow().astimezone():%Y%m%d-%H%M%S}", keep=5)
+            self.app.toast(f"Backup salvo: {path.name}", "success")
+        except Exception as exc:  # noqa: BLE001
+            self.app.toast(f"Falha no backup: {exc}", "error")
+
+    def _open(self, path) -> None:
+        from services import playback
+
+        try:
+            playback.open_folder(str(path))
+        except OSError as exc:
+            self.app.toast(f"Não foi possível abrir a pasta: {exc}", "error")
 
     def _on_min_score(self, value: float) -> None:
         self.min_score_label.configure(text=str(int(value)))
@@ -282,6 +391,9 @@ class SettingsView(BaseView):
         self.fps.set(self._label_for(FPS_OPTIONS, s.clip_fps, "30 fps (recomendado)"))
         self.burn_subs.select() if s.burn_subtitles else self.burn_subs.deselect()
         self.upper_subs.select() if s.subtitle_uppercase else self.upper_subs.deselect()
+        self.start_min.select() if s.start_minimized else self.start_min.deselect()
+        self._refresh_boot()
+        self._refresh_diag()
 
     def _collect(self):
         current = self.ctx.settings_repo.load()
@@ -312,6 +424,7 @@ class SettingsView(BaseView):
             clip_fps=FPS_OPTIONS.get(self.fps.get(), current.clip_fps),
             burn_subtitles=bool(self.burn_subs.get()),
             subtitle_uppercase=bool(self.upper_subs.get()),
+            start_minimized=bool(self.start_min.get()),
         )
 
     def save(self) -> None:

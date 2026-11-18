@@ -75,3 +75,11 @@ class Job:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+def eta_seconds(job: Job, now: datetime) -> float | None:
+    """Tempo restante estimado pelo ritmo atual (só para tarefas com progresso medido)."""
+    if job.status is not JobStatus.RUNNING or not job.started_at or job.progress < 0.05 or job.job_type.is_capture:
+        return None
+    elapsed = (now - job.started_at).total_seconds()
+    return max(0.0, elapsed / job.progress * (1 - job.progress))

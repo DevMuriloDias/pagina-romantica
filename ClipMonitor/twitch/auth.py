@@ -18,6 +18,7 @@ from typing import Callable, Protocol
 import requests
 
 from twitch.errors import TwitchAuthError, TwitchNetworkError
+from utils.logging_setup import register_secret
 from utils.timeutils import utcnow
 
 log = logging.getLogger(__name__)
@@ -59,6 +60,7 @@ class TwitchAuth:
     ):
         self.client_id = client_id.strip()
         self.client_secret = client_secret.strip()
+        register_secret(self.client_secret)
         self.session = session or requests.Session()
         self.store = store or MemoryTokenStore()
         self.clock = clock
@@ -115,6 +117,7 @@ class TwitchAuth:
         token = payload.get("access_token")
         if not token:
             raise TwitchAuthError("Resposta de autenticação da Twitch sem token.")
+        register_secret(token)
         expires_in = int(payload.get("expires_in", 3600))
         self._token = token
         self._expires_at = self.clock() + timedelta(seconds=expires_in)

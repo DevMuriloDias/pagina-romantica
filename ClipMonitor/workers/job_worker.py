@@ -81,6 +81,20 @@ class JobWorker:
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
+        self._processing_paused = False
+        self._shutting_down = False
+
+    # ------------------------------------------------------------ pausa
+    @property
+    def processing_paused(self) -> bool:
+        return self._processing_paused
+
+    def set_processing_paused(self, paused: bool) -> None:
+        """Pausa análise/transcrição/renderização (as capturas continuam: perder a live é irreversível).
+        Tarefas já em execução terminam normalmente; nenhuma nova começa."""
+        self._processing_paused = paused
+        self._notify()
+        self._wake.set()
 
     # ------------------------------------------------------------ registro
     def register(self, job_type: JobType, handler: JobHandler) -> None:
@@ -129,6 +143,20 @@ class JobWorker:
             self._notify()
         return ok
 
+    def retry_failed(self) -> int:
+        count = sum(1 for job in self.repo.list(tuple(st for st in JobStatus if st.is_retryable))
+                    if self.repo.requeue(job.id))
+        if count:
+            self._notify()
+            self._wake.set()
+        return count
+
+    def prioritize(self, job_id: int) -> bool:
+        ok = self.repo.set_priority_top(job_id)
+        if ok:
+            self._notify()
+        return ok
+
     def clear_finished(self) -> int:
         n = self.repo.clear_finished()
         if n:
@@ -144,10 +172,12 @@ class JobWorker:
             log.warning("%d tarefa(s) marcadas como interrompidas", interrupted)
             self._notify()
         self._stop.clear()
+        self._shutting_down = False
         self._thread = threading.Thread(target=self._loop, name="JobWorker", daemon=True)
         self._thread.start()
 
     def stop(self, timeout: float = 5.0) -> None:
+        self._shutting_down = True
         self._stop.set()
         self._wake.set()
         with self._lock:
@@ -182,6 +212,8 @@ class JobWorker:
             processing = len(self._running) - captures
         types = []
         for job_type in self._handlers:
+            if self._processing_paused and not job_type.is_capture:
+                continue
             limit = self.capture_concurrency() if job_type.is_capture else self.concurrency()
             used = captures if job_type.is_capture else processing
             if used < max(1, int(limit)):
@@ -205,14 +237,22 @@ class JobWorker:
 
     def _run(self, job: Job, cancel: threading.Event) -> None:
         ctx = JobContext(job, self.repo, cancel, self._notify)
+
+        def stopped() -> None:
+            # Fechar o app não é "cancelar": a tarefa fica retomável e não conta como decisão do usuário.
+            if self._shutting_down:
+                self.repo.finish(job.id, JobStatus.INTERRUPTED, "Interrompida ao fechar o ClipMonitor")
+            else:
+                self.repo.finish(job.id, JobStatus.CANCELLED, "Cancelada pelo usuário")
+
         try:
             message = self._handlers[job.job_type](ctx)
             if cancel.is_set():
-                self.repo.finish(job.id, JobStatus.CANCELLED, "Cancelada pelo usuário")
+                stopped()
             else:
                 self.repo.finish(job.id, JobStatus.COMPLETED, message or "Concluída")
         except JobCancelled:
-            self.repo.finish(job.id, JobStatus.CANCELLED, "Cancelada pelo usuário")
+            stopped()
         except Exception as exc:  # noqa: BLE001
             log.exception("Tarefa %s (%s) falhou", job.id, job.job_type.value)
             self.repo.finish(job.id, JobStatus.FAILED, "Falhou", error=str(exc) or exc.__class__.__name__)

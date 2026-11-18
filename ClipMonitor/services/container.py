@@ -22,6 +22,8 @@ from detection.analyzer import DetectionService
 from models.job import JobType
 from monitoring.events import EventBus
 from monitoring.live_checker import LiveStatusChecker
+from services.autostart import Autostart
+from services.review_service import ReviewService
 from services.status_service import StatusService
 from services.streamer_service import StreamerService
 from services.tools import ToolsService
@@ -55,10 +57,13 @@ class AppContext:
     transcriber: WhisperTranscriber
     clip_repo: ClipRepository
     clips: ClipService
+    review: ReviewService
+    autostart: Autostart
 
     def close(self) -> None:
         self.monitor.stop()
-        self.jobs.stop()
+        # Tempo para as capturas fecharem o último segmento (o FFmpeg finaliza ao receber EOF).
+        self.jobs.stop(timeout=20)
         self.transcriber.close()
         self.db.close()
 
@@ -104,6 +109,7 @@ def build_context(db_path: Path | str | None = None) -> AppContext:
     clips = ClipService(candidate_repo, recording_repo, clip_repo, settings_repo, activity_repo, jobs, tools)
     detection.on_scored = clips.on_scored
     capture.attach(bus)
+    monitor.after_check.append(capture.reconcile)
     jobs.register(JobType.CAPTURE, capture.handle)
     jobs.register(JobType.ANALYSIS, detection.handle_analysis)
     jobs.register(JobType.TRANSCRIPTION, detection.handle_transcription)
@@ -112,4 +118,6 @@ def build_context(db_path: Path | str | None = None) -> AppContext:
         db, settings_repo, streamer_repo, activity_repo, event_repo, job_repo, bus, twitch,
         streamers, checker, monitor, jobs, tools, status, recording_repo, candidate_repo,
         capture, detection, transcriber, clip_repo, clips,
+        ReviewService(clip_repo, candidate_repo, settings_repo, activity_repo),
+        Autostart(cfg.BASE_DIR / "main.py"),
     )

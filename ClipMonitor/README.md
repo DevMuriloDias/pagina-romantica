@@ -12,34 +12,55 @@ Local, single-user, free/open-source stack. UI is in Brazilian Portuguese.
 | 2 — Monitoring | Background monitoring worker, stream start/end events, per-streamer intervals, status indicators, persistent job queue | ✅ done |
 | 3 — Detection | Authorized capture (Streamlink → FFmpeg segments), audio analysis, Silero VAD, intensity changes, local Whisper transcription, moment scoring, non-overlapping selection | ✅ done |
 | 4 — Video | FFmpeg render to 1080x1920, word-synced PT-BR subtitles (ASS burned in + .srt), thumbnails, saved locally | ✅ done |
-| 5 — Finalization | Clip review, queue controls, error handling/logging, automatic startup | in progress |
+| 5 — Finalization | Clip review, queue controls, error handling/logging, automatic startup | ✅ done |
 
-## Setup (Windows 11, Python 3.11)
+## Running on Windows 11
+
+**1. Install the prerequisites (once)**
+
+- **Python 3.11** from <https://www.python.org/downloads/> — tick *"Add python.exe to PATH"*.
+- **FFmpeg (full build)** from <https://www.gyan.dev/ffmpeg/builds/> → `ffmpeg-release-full.7z`.
+  Extract it (e.g. `C:\ffmpeg`) and add `C:\ffmpeg\bin` to the user `PATH`
+  (Start → "variáveis de ambiente" → Path → Novo). The full build includes `ffprobe` and `ffplay`.
+
+**2. Install ClipMonitor**
+
+Double-click **`instalar.bat`** in the `ClipMonitor` folder. It creates `.venv` and installs
+`requirements.txt` (CustomTkinter, numpy, Pillow, faster-whisper, Streamlink). It warns if FFmpeg
+is not on the `PATH`. Or manually:
 
 ```powershell
 cd ClipMonitor
 py -3.11 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
+.venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Then in **Configurações**:
+**3. Open it**
+
+Double-click **`ClipMonitor.bat`** (no console window), or run
+`.venv\Scripts\python main.py` to see the log in the terminal. Options: `--minimized`, `--no-monitor`.
+
+**4. First-time setup inside the app (Configurações)**
 
 1. Create an app at <https://dev.twitch.tv/console/apps> (OAuth Redirect URL `http://localhost`,
-   category *Application Integration*, client type *Confidential*).
-2. Paste the **Client ID** and **Client Secret**, click **Testar conexão**, then **Salvar alterações**.
-3. Add streamers in **Streamers**. A channel can only be monitored after you tick
+   category *Application Integration*, client type *Confidential*). Paste **Client ID** and
+   **Client Secret**, click **Testar conexão**, then **Salvar alterações**.
+2. In **Streamers**, add the channels that authorized you and tick
    *"Tenho autorização deste streamer…"*.
-4. Click **Iniciar monitoramento** in the sidebar (or enable auto-start in settings).
+3. Click **Iniciar monitoramento**. When an authorized streamer goes live, recording, analysis,
+   transcription and rendering run on their own; clips appear in **Biblioteca** for review.
+4. Optional: **Inicialização → Iniciar junto com o Windows** + **Abrir minimizado** +
+   *Iniciar monitoramento ao abrir* for a hands-free setup.
 
-You also need **FFmpeg** (full build, includes `ffplay` for previews): download from
-<https://www.gyan.dev/ffmpeg/builds/>, extract, and add its `bin` folder to `PATH`. The **Fila e
-capturas** screen shows whether FFmpeg and Streamlink were found. The Whisper model (default
-`small`, ~250 MB) is downloaded automatically into `data/models` the first time a moment is
-transcribed.
+The Whisper model (default `small`, ~250 MB) downloads into `data/models` the first time a moment is
+transcribed; after that everything runs offline except Twitch itself.
 
-Run the tests with `pytest` from the `ClipMonitor` folder.
+**Where things are:** `output/pending|approved|rejected` (videos + `.srt`), `output/thumbnails`,
+`output/recordings` (raw segments, auto-deleted after the retention period), `data/clipmonitor.db`,
+`logs/clipmonitor.log`.
+
+**Tests:** `.venv\Scripts\python -m pytest` (146 tests; FFmpeg-based ones are skipped if FFmpeg
+is missing).
 
 ## Architecture
 
@@ -147,3 +168,40 @@ output/thumbnails/<same>.jpg
   frames against the unsplit source.
 - **Never a half file:** rendering happens in `output/.work/…`; only a validated MP4 is moved into
   `pending/`. Streams without audio get a silent track (platforms reject video-only files).
+
+## Finalization (phase 5)
+
+- **Clip review (Biblioteca):** thumbnail grid; *Aprovar* / *Rejeitar* / *Revisar de novo* move the
+  `.mp4` + `.srt` between `pending/`, `approved/` and `rejected/` **before** updating the database,
+  rolling back if any move fails (e.g. a video open in a player on Windows) — disk and database never
+  disagree. Name clashes get a `_2` suffix instead of overwriting. Also: play in the default player,
+  copy the transcript (for the post caption), delete (moment returns to "ready").
+- **Processing queue:** pause processing (captures keep running — a missed live can't be recovered),
+  retry all failed tasks, move a task to the front, time-remaining estimate, captures stop cleanly
+  and still analyse what was recorded.
+- **Resilience:** closing the app marks running tasks as *interrupted* (not cancelled); on the next
+  check, any authorized live without an active recording is recorded again (also covers Streamlink
+  dropping mid-stream). User cancellations are respected; recent failures are not retried in a loop.
+- **Errors and logging:** unhandled errors in any thread or UI callback are logged with traceback and
+  shown as a short Portuguese message; startup failures show a dialog with the log path. Logs rotate
+  (5 x 2 MB). Client Secret, tokens and `Authorization` headers are redacted before anything is
+  written. The database is backed up automatically before every schema upgrade (and on demand) and
+  integrity-checked at startup. Only one instance can run (two would record the same live twice).
+  *Configurações → Diagnóstico* shows versions, paths, free disk and a log viewer.
+- **Automatic startup:** per-user `HKCU\...\Run` entry (no admin, visible in Task Manager → Startup
+  apps) launching `pythonw.exe main.py --minimized` from the same `.venv`; detects if the folder was
+  moved.
+
+## Rules this project follows
+
+- Only free, open-source, local components (FFmpeg, Streamlink, faster-whisper/Silero, SQLite,
+  CustomTkinter). No paid APIs, cloud hosting, user accounts or payments.
+- Twitch is used only through the official Helix API with your own app credentials; secrets are
+  encrypted at rest (Windows DPAPI) and redacted from logs.
+- Streams are accessed only through Streamlink's normal public playback (no DRM/access-control
+  bypass); capture and monitoring are refused unless you confirm authorization for that channel,
+  re-checked when recording starts and stored next to every recording.
+- Offline-tolerant: without internet or Twitch, the library, review, rendering and transcription
+  (after the first model download) keep working; monitoring backs off and recovers.
+- Integrations are verified, not assumed: rendered files are checked with ffprobe before being
+  reported as successful, and tests exercise real FFmpeg pipelines.

@@ -45,6 +45,7 @@ class AppSettings:
     # Evita falsos "encerrou" quando a API da Twitch omite um canal por instantes.
     offline_grace_checks: int = 2
     start_monitoring_on_launch: bool = False
+    start_minimized: bool = False
     output_dir: str = field(default_factory=lambda: str(OUTPUT_DIR))
     # Reservado para fases seguintes (já expostos na tela de configurações).
     whisper_model: str = "small"
@@ -88,6 +89,7 @@ class AppSettings:
             poll_interval_seconds=interval,
             offline_grace_checks=max(1, min(5, int(self.offline_grace_checks))),
             start_monitoring_on_launch=bool(self.start_monitoring_on_launch),
+            start_minimized=bool(self.start_minimized),
             output_dir=self.output_dir.strip() or str(OUTPUT_DIR),
             whisper_model=self.whisper_model,
             clip_duration_seconds=max(10, min(180, int(self.clip_duration_seconds))),

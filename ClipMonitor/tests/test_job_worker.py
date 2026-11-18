@@ -163,3 +163,64 @@ def test_long_capture_does_not_block_processing(jobs):
     release.set()
     assert wait_for(lambda: jobs.get(cap2.id).status is JobStatus.COMPLETED)
     worker.stop()
+
+
+def test_pause_processing_keeps_captures_running(jobs):
+    done = []
+    worker = JobWorker(jobs, poll_seconds=0.02)
+    worker.register(JobType.CAPTURE, lambda ctx: done.append("capture"))
+    worker.register(JobType.RENDER, lambda ctx: done.append("render"))
+    worker.set_processing_paused(True)
+    worker.start()
+    render = worker.enqueue(Job(JobType.RENDER))
+    cap = worker.enqueue(Job(JobType.CAPTURE))
+    assert wait_for(lambda: jobs.get(cap.id).status is JobStatus.COMPLETED)
+    time.sleep(0.1)
+    assert jobs.get(render.id).status is JobStatus.QUEUED
+    worker.set_processing_paused(False)
+    assert wait_for(lambda: jobs.get(render.id).status is JobStatus.COMPLETED)
+    worker.stop()
+
+
+def test_retry_failed_and_prioritize(jobs):
+    a = jobs.enqueue(Job(JobType.RENDER))
+    b = jobs.enqueue(Job(JobType.RENDER))
+    c = jobs.enqueue(Job(JobType.RENDER, priority=3))
+    jobs.claim_next([JobType.RENDER])  # c
+    jobs.finish(c.id, JobStatus.FAILED, error="x")
+    worker = JobWorker(jobs)
+    assert worker.retry_failed() == 1 and jobs.get(c.id).status is JobStatus.QUEUED
+    assert worker.prioritize(b.id)
+    assert jobs.claim_next([JobType.RENDER]).id == b.id  # passou na frente de c (prioridade 3)
+    assert a.id
+
+
+def test_eta():
+    from datetime import datetime, timedelta, timezone
+
+    from models.job import eta_seconds
+
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    job = Job(JobType.RENDER, status=JobStatus.RUNNING, progress=0.25, started_at=now - timedelta(seconds=10))
+    assert eta_seconds(job, now) == pytest.approx(30)
+    job.progress = 0.01
+    assert eta_seconds(job, now) is None
+
+
+def test_shutdown_marks_interrupted_not_cancelled(jobs):
+    started = threading.Event()
+
+    def long_job(ctx):
+        started.set()
+        while True:
+            ctx.raise_if_cancelled()
+            time.sleep(0.01)
+
+    worker = JobWorker(jobs, poll_seconds=0.02)
+    worker.register(JobType.CAPTURE, long_job)
+    worker.start()
+    job = worker.enqueue(Job(JobType.CAPTURE))
+    assert started.wait(5)
+    worker.stop()
+    assert jobs.get(job.id).status is JobStatus.INTERRUPTED
+    assert jobs.get(job.id).status.is_retryable

@@ -85,6 +85,8 @@ class Database:
             " version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
         )
         current = conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_migrations").fetchone()[0]
+        if current and any(v > current for v, _ in MIGRATIONS):
+            self.backup(f"antes-v{current + 1}")
         for version, statements in MIGRATIONS:
             if version <= current:
                 continue
@@ -95,6 +97,27 @@ class Database:
                 tx.execute("INSERT INTO schema_migrations (version) VALUES (?)", (version,))
             current = version
         return current
+
+
+    def backup(self, label: str, keep: int = 3) -> Path | None:
+        """Cópia consistente (API de backup do SQLite) ao lado do banco. Mantém as ``keep`` mais recentes."""
+        if self.path == ":memory:":
+            return None
+        db_path = Path(self.path)
+        target = db_path.with_name(f"{db_path.stem}.{label}.bak")
+        dest = sqlite3.connect(target)
+        try:
+            self.conn.backup(dest)
+        finally:
+            dest.close()
+        backups = sorted(db_path.parent.glob(f"{db_path.stem}.*.bak"), key=lambda p: p.stat().st_mtime)
+        for old in backups[:-keep]:
+            old.unlink(missing_ok=True)
+        log.info("Backup do banco salvo em %s", target.name)
+        return target
+
+    def integrity_ok(self) -> bool:
+        return self.conn.execute("PRAGMA quick_check").fetchone()[0] == "ok"
 
 
 def open_database(path: Path | str) -> Database:

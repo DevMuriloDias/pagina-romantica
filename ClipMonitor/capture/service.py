@@ -23,7 +23,7 @@ from database.repositories import (
 )
 from models.candidate import CandidateStatus
 from models.events import StreamEvent, StreamEventType
-from models.job import Job, JobType
+from models.job import Job, JobStatus, JobType
 from models.recording import Recording, RecordingStatus, Segment, SegmentStatus
 from monitoring.events import EventBus
 from services.tools import ToolsService
@@ -33,6 +33,7 @@ from workers.job_worker import JobCancelled, JobContext, JobWorker
 log = logging.getLogger(__name__)
 
 POLL_SECONDS = 1.0
+FAILED_RETRY_AFTER = timedelta(minutes=10)
 DISK_CHECK_SECONDS = 30
 GB = 1024 ** 3
 
@@ -102,6 +103,34 @@ class CaptureService:
         if manual:
             self.activity.add(f"Gravação de {s.name} solicitada.", "info", s.id)
         return job
+
+    def reconcile(self) -> list[int]:
+        """Garante gravação para toda live autorizada em andamento.
+
+        Cobre o que o evento ONLINE sozinho não cobre: app reaberto com a live já
+        rolando, ou Streamlink que caiu no meio (rede). Não reinicia o que o usuário
+        cancelou, nem insiste logo após uma falha (ex.: disco cheio).
+        """
+        if not self.settings_repo.load().auto_capture:
+            return []
+        started = []
+        now = utcnow()
+        for s in self.streamers.list_monitorable():
+            if not (s.is_live and s.stream_id) or self.is_capturing(s.id):
+                continue
+            last = self.jobs.repo.latest_by_dedupe(f"capture:{s.id}:{s.stream_id}")
+            if last is not None:
+                if last.status.is_active or last.status is JobStatus.CANCELLED:
+                    continue
+                if last.status is JobStatus.FAILED and last.finished_at and now - last.finished_at < FAILED_RETRY_AFTER:
+                    continue
+            try:
+                self.enqueue(s.id, s.stream_id, manual=False)
+                started.append(s.id)
+                log.info("Gravação de %s (re)iniciada pela reconciliação", s.name)
+            except CaptureError as exc:
+                log.info("Reconciliação não iniciou %s: %s", s.name, exc)
+        return started
 
     def request_stop(self, streamer_id: int) -> bool:
         """Encerra a gravação normalmente (os segmentos já gravados seguem para análise)."""

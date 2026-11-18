@@ -231,7 +231,12 @@ def test_stop_request_completes_and_cancel_stops(capture_env, monkeypatch):
                                                              original(self))[1])
     with pytest.raises(JobCancelled):
         svc.handle(ctx2)
-    assert svc.recordings.list_recent()[0].status is RecordingStatus.STOPPED
+    stopped = svc.recordings.list_recent()[0]
+    assert stopped.status is RecordingStatus.STOPPED
+    # O que foi gravado até a parada segue para análise.
+    seg_ids = {g.id for g in svc.recordings.segments(stopped.id)}
+    queued = {j.payload["segment_id"] for j in repos["jobs"].list() if j.job_type is JobType.ANALYSIS}
+    assert seg_ids and seg_ids <= queued
 
 
 def test_low_disk_space_fails_capture(capture_env):
@@ -271,3 +276,34 @@ def test_retention_keeps_segments_with_pending_moments(capture_env, monkeypatch)
         svc.candidates.set_status(c.id, CandidateStatus.REJECTED)
     svc.purge_expired()
     assert svc.recordings.get(rec.id).status is RecordingStatus.PURGED
+
+
+def test_reconcile_restarts_live_streams_but_respects_user(capture_env, monkeypatch):
+    svc, repos, _ = capture_env
+    s = live_streamer(repos)
+    assert svc.reconcile() == [s.id]                     # app aberto com a live já rolando
+    assert svc.reconcile() == []                         # já há captura ativa
+    job = repos["jobs"].list()[0]
+    repos["jobs"].claim_next([JobType.CAPTURE])
+    repos["jobs"].finish(job.id, JobStatus.COMPLETED)    # Streamlink caiu, mas a live continua
+    assert svc.reconcile() == [s.id]
+    job2 = repos["jobs"].list((JobStatus.QUEUED,))[0]
+    repos["jobs"].cancel_if_queued(job2.id)              # usuário cancelou: não insistir
+    assert svc.reconcile() == []
+
+    other = live_streamer(repos, login="dois", stream_id="z")
+    svc.reconcile()
+    failed = repos["jobs"].latest_by_dedupe(f"capture:{other.id}:z")
+    repos["jobs"].claim_next([JobType.CAPTURE])
+    repos["jobs"].finish(failed.id, JobStatus.FAILED, error="disco cheio")
+    assert svc.reconcile() == []                         # falha recente: espera
+    import capture.service as mod
+
+    monkeypatch.setattr(mod, "utcnow", lambda: utcnow() + timedelta(minutes=11))
+    assert svc.reconcile() == [other.id]
+
+    settings = repos["settings"].load()
+    settings.auto_capture = False
+    repos["settings"].save(settings)
+    repos["jobs"].finish(repos["jobs"].list((JobStatus.QUEUED,))[0].id, JobStatus.COMPLETED)
+    assert svc.reconcile() == []

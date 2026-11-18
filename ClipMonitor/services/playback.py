@@ -30,6 +30,11 @@ def play(cmd: list[str]) -> None:
                      )  # sem CREATE_NO_WINDOW: a janela do vídeo precisa aparecer
 
 
+def open_path(path: str) -> None:
+    """Abre arquivo/pasta no programa padrão do sistema (no Windows: o player de vídeo do usuário)."""
+    open_folder(path)
+
+
 def open_folder(path: str) -> None:
     if sys.platform == "win32":
         os.startfile(path)  # type: ignore[attr-defined]
