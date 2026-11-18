@@ -25,6 +25,8 @@ def from_iso(value: str | None) -> datetime | None:
 
 def format_duration(seconds: float) -> str:
     seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds} s"
     hours, rem = divmod(seconds, 3600)
     minutes = rem // 60
     if hours:

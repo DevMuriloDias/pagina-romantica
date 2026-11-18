@@ -8,11 +8,15 @@ from tkinter import filedialog
 import customtkinter as ctk
 
 from config import theme as t
-from config.settings import MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, WHISPER_MODELS, ensure_directories
+from config.settings import MAX_POLL_INTERVAL, MIN_POLL_INTERVAL, QUALITY_PRESETS, WHISPER_MODELS, ensure_directories
 from ui.components.widgets import Card, Entry, GhostButton, PageHeader, PrimaryButton, Switch, label, muted
 from ui.views.base import BaseView
 
 TWITCH_CONSOLE_URL = "https://dev.twitch.tv/console/apps"
+DISK_OPTIONS = {"5 GB": 5, "10 GB": 10, "20 GB": 20, "50 GB": 50}
+RETENTION_OPTIONS = {"12 horas": 12, "24 horas": 24, "48 horas": 48, "7 dias": 168}
+PER_HOUR_OPTIONS = {"3 por hora": 3, "6 por hora": 6, "10 por hora": 10, "15 por hora": 15}
+GAP_OPTIONS = {"Sem folga": 0, "10 s": 10, "15 s": 15, "30 s": 30, "60 s": 60}
 GRACE_OPTIONS = {
     "Imediata (1 verificação)": 1,
     "2 verificações seguidas (recomendado)": 2,
@@ -31,7 +35,7 @@ class SettingsView(BaseView):
         header.grid(row=0, column=0, sticky="ew", pady=(0, t.PAD))
         PrimaryButton(header.actions, "Salvar alterações", self.save, width=170).pack(side="right")
 
-        scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
+        scroll = self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
         scroll.grid(row=1, column=0, sticky="nsew")
         scroll.grid_columnconfigure(0, weight=1)
 
@@ -105,6 +109,50 @@ class SettingsView(BaseView):
                     "Capturas usam pouca CPU e rodam em paralelo ao processamento.", wraplength=760).grid(
             row=self._next(proc), column=0, sticky="w", padx=20, pady=(0, 18))
 
+        # ---- Captura e detecção
+        det = self._section(scroll, 3, "Captura e detecção de momentos",
+                            "Gravação das lives autorizadas e critérios para escolher os melhores trechos.")
+        self.auto_capture = Switch(det, "Gravar automaticamente quando um streamer autorizado entrar ao vivo")
+        self.auto_capture.grid(row=self._next(det), column=0, sticky="w", padx=20, pady=(14, 0))
+        cap = ctk.CTkFrame(det, fg_color="transparent")
+        cap.grid(row=self._next(det), column=0, sticky="ew", padx=20, pady=(14, 0))
+        for i in range(3):
+            cap.grid_columnconfigure(i, weight=1, uniform="cap")
+        self.quality = self._option(cap, 0, "Qualidade da gravação", list(QUALITY_PRESETS))
+        self.min_disk = self._option(cap, 1, "Espaço livre mínimo", list(DISK_OPTIONS))
+        self.retention = self._option(cap, 2, "Manter gravações por", list(RETENTION_OPTIONS))
+        muted(det, "A gravação copia o vídeo sem recodificar (quase não usa CPU). Trechos com momentos "
+                   "pendentes ou aprovados nunca são apagados pela retenção.", wraplength=760).grid(
+            row=self._next(det), column=0, sticky="w", padx=20, pady=(6, 0))
+
+        score_row = ctk.CTkFrame(det, fg_color="transparent")
+        score_row.grid_columnconfigure(0, weight=1)
+        self.min_score_label = label(score_row, "", font=(t.FONT_FAMILY, 13, "bold"), color=t.ACCENT, width=50)
+        self.min_score = ctk.CTkSlider(
+            score_row, from_=30, to=90, number_of_steps=12, command=self._on_min_score,
+            progress_color=t.ACCENT, button_color=t.ACCENT, button_hover_color=t.ACCENT_HOVER, fg_color=t.BORDER)
+        self.min_score.grid(row=0, column=0, sticky="ew")
+        self.min_score_label.grid(row=0, column=1, padx=(12, 0))
+        self._field(det, "Nota mínima de um momento", score_row,
+                    "Notas de 0 a 100 combinam volume acima do normal, explosões de intensidade, gritos, "
+                    "presença de voz e (com transcrição) palavras de empolgação e risadas.")
+
+        sel = ctk.CTkFrame(det, fg_color="transparent")
+        sel.grid(row=self._next(det), column=0, sticky="ew", padx=20, pady=(14, 0))
+        for i in range(2):
+            sel.grid_columnconfigure(i, weight=1, uniform="sel")
+        self.per_hour = self._option(sel, 0, "Máximo de momentos", list(PER_HOUR_OPTIONS))
+        self.gap = self._option(sel, 1, "Folga mínima entre momentos", list(GAP_OPTIONS))
+        muted(det, "Momentos nunca se sobrepõem: se dois trechos colidem, fica o de maior nota.",
+              wraplength=760).grid(row=self._next(det), column=0, sticky="w", padx=20, pady=(6, 0))
+
+        self.transcribe = Switch(det, "Transcrever os momentos localmente (Whisper) para refinar a nota")
+        self.transcribe.grid(row=self._next(det), column=0, sticky="w", padx=20, pady=(16, 0))
+        self.keywords = Entry(det, "ex.: bordão do canal, nome do mascote, grito de vitória")
+        self._field(det, "Palavras-chave extras", self.keywords,
+                    "Separe por vírgulas. Somam pontos quando aparecem na transcrição, além do vocabulário padrão.")
+        ctk.CTkFrame(det, fg_color="transparent", height=18).grid(row=self._next(det), column=0)
+
     # ------------------------------------------------------------ helpers
     def _section(self, parent, row: int, title: str, subtitle: str) -> Card:
         card = Card(parent)
@@ -147,6 +195,13 @@ class SettingsView(BaseView):
         menu.pack(fill="x")
         return menu
 
+    def _on_min_score(self, value: float) -> None:
+        self.min_score_label.configure(text=str(int(value)))
+
+    @staticmethod
+    def _label_for(options: dict, value, fallback: str) -> str:
+        return next((k for k, v in options.items() if v == value), fallback)
+
     def _toggle_secret(self) -> None:
         hidden = self.client_secret.cget("show") == "•"
         self.client_secret.configure(show="" if hidden else "•")
@@ -183,6 +238,17 @@ class SettingsView(BaseView):
         self.clip_len.set(str(s.clip_duration_seconds))
         self.jobs.set(str(s.max_parallel_jobs))
         self.captures.set(str(s.max_concurrent_captures))
+        self.auto_capture.select() if s.auto_capture else self.auto_capture.deselect()
+        self.quality.set(self._label_for(QUALITY_PRESETS, s.capture_quality, s.capture_quality))
+        self.min_disk.set(self._label_for(DISK_OPTIONS, s.min_free_disk_gb, f"{s.min_free_disk_gb} GB"))
+        self.retention.set(self._label_for(RETENTION_OPTIONS, s.recording_retention_hours,
+                                           f"{s.recording_retention_hours} horas"))
+        self.min_score.set(s.min_moment_score)
+        self._on_min_score(s.min_moment_score)
+        self.per_hour.set(self._label_for(PER_HOUR_OPTIONS, s.max_moments_per_hour, f"{s.max_moments_per_hour} por hora"))
+        self.gap.set(self._label_for(GAP_OPTIONS, s.min_gap_between_moments, f"{s.min_gap_between_moments} s"))
+        self.transcribe.select() if s.transcribe_moments else self.transcribe.deselect()
+        self._set_entry(self.keywords, s.custom_keywords)
 
     def _collect(self):
         current = self.ctx.settings_repo.load()
@@ -198,6 +264,15 @@ class SettingsView(BaseView):
             clip_duration_seconds=int(self.clip_len.get()),
             max_parallel_jobs=int(self.jobs.get()),
             max_concurrent_captures=int(self.captures.get()),
+            auto_capture=bool(self.auto_capture.get()),
+            capture_quality=QUALITY_PRESETS.get(self.quality.get(), current.capture_quality),
+            min_free_disk_gb=DISK_OPTIONS.get(self.min_disk.get(), current.min_free_disk_gb),
+            recording_retention_hours=RETENTION_OPTIONS.get(self.retention.get(), current.recording_retention_hours),
+            min_moment_score=int(self.min_score.get()),
+            max_moments_per_hour=PER_HOUR_OPTIONS.get(self.per_hour.get(), current.max_moments_per_hour),
+            min_gap_between_moments=GAP_OPTIONS.get(self.gap.get(), current.min_gap_between_moments),
+            transcribe_moments=bool(self.transcribe.get()),
+            custom_keywords=self.keywords.get(),
         )
 
     def save(self) -> None:

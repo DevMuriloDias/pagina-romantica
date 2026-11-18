@@ -65,9 +65,11 @@ class DashboardView(BaseView):
         self.row_next = StatusRow(sys_card, "Próxima verificação")
         self.row_capture = StatusRow(sys_card, "Captura (Streamlink)")
         self.row_ffmpeg = StatusRow(sys_card, "Processamento (FFmpeg)")
+        self.row_whisper = StatusRow(sys_card, "Transcrição (Whisper)")
         self.row_queue = StatusRow(sys_card, "Fila de tarefas")
-        for i, row in enumerate([self.row_monitor, self.row_next, self.row_capture, self.row_ffmpeg, self.row_queue], 1):
-            row.grid(row=i, column=0, sticky="ew", padx=18, pady=(3, 14 if i == 5 else 3))
+        rows = [self.row_monitor, self.row_next, self.row_capture, self.row_ffmpeg, self.row_whisper, self.row_queue]
+        for i, row in enumerate(rows, 1):
+            row.grid(row=i, column=0, sticky="ew", padx=18, pady=(3, 14 if i == len(rows) else 3))
 
         act_card = Card(right)
         act_card.grid(row=1, column=0, sticky="nsew")
@@ -127,6 +129,12 @@ class DashboardView(BaseView):
                 row.set(f"instalado {info.version}".strip(), t.ACCENT)
             else:
                 row.set("não encontrado", t.WARNING)
+        whisper = self.ctx.transcriber
+        model = self.ctx.settings_repo.load().whisper_model
+        if whisper.loaded:
+            self.row_whisper.set(f"modelo '{model}' carregado", t.ACCENT)
+        else:
+            self.row_whisper.set(f"'{model}' · carrega sob demanda", t.TEXT_DIM)
         p = self.app.pipeline
         if p.capture_running or p.processing_running:
             self.row_queue.set(f"{p.capture_running + p.processing_running} em andamento", t.ACCENT)

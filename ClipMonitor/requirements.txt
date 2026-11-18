@@ -1,13 +1,14 @@
 # ClipMonitor — dependências (Python 3.11, Windows 11)
-# Fase 1
 customtkinter==5.2.2
 requests>=2.31,<3
+numpy>=1.26
+# Transcrição local (CPU int8) + Silero VAD em ONNX (sem PyTorch)
+faster-whisper>=1.0
+# Captura das lives (anúncios já são descartados por padrão a partir da v7)
+streamlink>=7.0
 
 # Testes
 pytest>=8.0
 
-# Fases seguintes (instaladas quando forem implementadas):
-# streamlink>=6.7
-# faster-whisper>=1.0      # CPU, int8
-# silero-vad>=5.1
-# FFmpeg: binário externo (https://www.gyan.dev/ffmpeg/builds/) no PATH
+# Externo: FFmpeg completo (inclui ffplay) — https://www.gyan.dev/ffmpeg/builds/
+# Extraia e adicione a pasta "bin" ao PATH do Windows.

@@ -8,7 +8,10 @@ from datetime import datetime
 
 from config.settings import AppSettings
 from database.connection import Database
+from detection.selection import Decision, decide
+from models.candidate import Candidate, CandidateStatus, TranscriptSegment, TranscriptWord
 from models.events import StreamEvent, StreamEventType
+from models.recording import Recording, RecordingStatus, Segment, SegmentStatus
 from models.job import Job, JobStatus, JobType
 from models.live_status import StreamInfo
 from models.streamer import LiveSession, Streamer
@@ -516,3 +519,224 @@ class JobRepository:
         for r in rows:
             out.setdefault(r["streamer_id"], _row_to_job(r))
         return out
+
+
+# ---------------------------------------------------------------- gravações
+
+_REC_SELECT = """SELECT r.*, COALESCE(NULLIF(s.display_name, ''), s.login) AS streamer_name
+                 FROM recordings r JOIN streamers s ON s.id = r.streamer_id"""
+
+
+def _row_to_recording(r: sqlite3.Row) -> Recording:
+    return Recording(
+        id=r["id"], streamer_id=r["streamer_id"], stream_id=r["stream_id"], directory=r["directory"],
+        status=RecordingStatus(r["status"]), quality=r["quality"], authorization_note=r["authorization_note"],
+        job_id=r["job_id"], started_at=from_iso(r["started_at"]), ended_at=from_iso(r["ended_at"]),
+        bytes=r["bytes"], segment_count=r["segment_count"],
+        streamer_name=r["streamer_name"] if "streamer_name" in r.keys() else None,
+    )
+
+
+def _row_to_segment(r: sqlite3.Row) -> Segment:
+    return Segment(
+        id=r["id"], recording_id=r["recording_id"], index=r["idx"], path=r["path"],
+        start_offset=r["start_offset"], duration=r["duration"], status=SegmentStatus(r["status"]),
+        bytes=r["bytes"],
+    )
+
+
+class RecordingRepository:
+    def __init__(self, db: Database):
+        self.db = db
+
+    def create(self, rec: Recording) -> Recording:
+        with self.db.transaction() as tx:
+            cur = tx.execute(
+                """INSERT INTO recordings (streamer_id, stream_id, job_id, directory, status, quality,
+                       authorization_note, started_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (rec.streamer_id, rec.stream_id, rec.job_id, rec.directory, rec.status.value, rec.quality,
+                 rec.authorization_note, to_iso(rec.started_at or utcnow())),
+            )
+        return self.get(cur.lastrowid)  # type: ignore[return-value]
+
+    def get(self, recording_id: int) -> Recording | None:
+        row = self.db.query_one(f"{_REC_SELECT} WHERE r.id = ?", (recording_id,))
+        return _row_to_recording(row) if row else None
+
+    def list_recent(self, limit: int = 50) -> list[Recording]:
+        return [_row_to_recording(r) for r in self.db.query(f"{_REC_SELECT} ORDER BY r.id DESC LIMIT ?", (limit,))]
+
+    def set_directory(self, recording_id: int, directory: str) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE recordings SET directory=? WHERE id=?", (directory, recording_id))
+
+    def finish(self, recording_id: int, status: RecordingStatus) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE recordings SET status=?, ended_at=? WHERE id=?",
+                       (status.value, to_iso(utcnow()), recording_id))
+
+    def update_stats(self, recording_id: int, total_bytes: int, segment_count: int) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE recordings SET bytes=?, segment_count=? WHERE id=?",
+                       (total_bytes, segment_count, recording_id))
+
+    def mark_running_as_failed(self) -> int:
+        with self.db.transaction() as tx:
+            cur = tx.execute("UPDATE recordings SET status='failed', ended_at=? WHERE status='recording'",
+                             (to_iso(utcnow()),))
+            return cur.rowcount
+
+    def finished_before(self, cutoff: datetime) -> list[Recording]:
+        rows = self.db.query(
+            f"{_REC_SELECT} WHERE r.status IN ('completed','stopped','failed') AND r.ended_at IS NOT NULL "
+            "AND r.ended_at < ? ORDER BY r.id",
+            (to_iso(cutoff),),
+        )
+        return [_row_to_recording(r) for r in rows]
+
+    # ---- segmentos
+    def add_segment(self, seg: Segment) -> Segment:
+        """Registra um segmento concluído (idempotente por índice)."""
+        with self.db.transaction() as tx:
+            tx.execute(
+                """INSERT INTO recording_segments (recording_id, idx, path, start_offset, duration, bytes)
+                   VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (recording_id, idx) DO NOTHING""",
+                (seg.recording_id, seg.index, seg.path, seg.start_offset, seg.duration, seg.bytes),
+            )
+            row = tx.execute("SELECT * FROM recording_segments WHERE recording_id=? AND idx=?",
+                             (seg.recording_id, seg.index)).fetchone()
+        return _row_to_segment(row)
+
+    def get_segment(self, segment_id: int) -> Segment | None:
+        row = self.db.query_one("SELECT * FROM recording_segments WHERE id=?", (segment_id,))
+        return _row_to_segment(row) if row else None
+
+    def segments(self, recording_id: int) -> list[Segment]:
+        rows = self.db.query("SELECT * FROM recording_segments WHERE recording_id=? ORDER BY idx", (recording_id,))
+        return [_row_to_segment(r) for r in rows]
+
+    def segments_covering(self, recording_id: int, start: float, end: float) -> list[Segment]:
+        rows = self.db.query(
+            """SELECT * FROM recording_segments WHERE recording_id=? AND status != 'deleted'
+                   AND start_offset < ? AND start_offset + duration > ? ORDER BY idx""",
+            (recording_id, end, start),
+        )
+        return [_row_to_segment(r) for r in rows]
+
+    def set_segment_status(self, segment_id: int, status: SegmentStatus) -> None:
+        analyzed = to_iso(utcnow()) if status is SegmentStatus.ANALYZED else None
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE recording_segments SET status=?, analyzed_at=COALESCE(?, analyzed_at) WHERE id=?",
+                       (status.value, analyzed, segment_id))
+
+    def mark_purged(self, recording_id: int) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE recording_segments SET status='deleted' WHERE recording_id=?", (recording_id,))
+            tx.execute("UPDATE recordings SET status='purged' WHERE id=?", (recording_id,))
+
+
+# ---------------------------------------------------------------- candidatos
+
+_CAND_SELECT = """SELECT c.*, COALESCE(NULLIF(s.display_name, ''), s.login) AS streamer_name
+                  FROM candidates c JOIN streamers s ON s.id = c.streamer_id"""
+
+
+def _transcript_to_json(segments: list[TranscriptSegment]) -> str:
+    return json.dumps([
+        {"start": s.start, "end": s.end, "text": s.text,
+         "words": [[w.start, w.end, w.word, w.probability] for w in s.words]}
+        for s in segments
+    ], ensure_ascii=False)
+
+
+def _transcript_from_json(raw: str) -> list[TranscriptSegment]:
+    out = []
+    for s in json.loads(raw or "[]"):
+        words = [TranscriptWord(w[0], w[1], w[2], w[3]) for w in s.get("words", [])]
+        out.append(TranscriptSegment(s["start"], s["end"], s["text"], words))
+    return out
+
+
+def _row_to_candidate(r: sqlite3.Row) -> Candidate:
+    return Candidate(
+        id=r["id"], recording_id=r["recording_id"], streamer_id=r["streamer_id"], start=r["start_offset"],
+        end=r["end_offset"], peak=r["peak_offset"], score=r["score"], audio_score=r["audio_score"],
+        text_score=r["text_score"], breakdown=json.loads(r["breakdown"] or "{}"),
+        status=CandidateStatus(r["status"]), transcript=_transcript_from_json(r["transcript"]),
+        language=r["language"], created_at=from_iso(r["created_at"]),
+        streamer_name=r["streamer_name"] if "streamer_name" in r.keys() else None,
+    )
+
+
+class CandidateRepository:
+    def __init__(self, db: Database):
+        self.db = db
+
+    def _existing(self, tx, recording_id: int) -> list[Candidate]:
+        rows = tx.execute(f"{_CAND_SELECT} WHERE c.recording_id = ?", (recording_id,)).fetchall()
+        return [_row_to_candidate(r) for r in rows]
+
+    def _discard(self, tx, ids: list[int], now: str) -> None:
+        for cid in ids:
+            tx.execute("UPDATE candidates SET status='discarded', updated_at=? WHERE id=?", (now, cid))
+
+    def insert_selected(self, cand: Candidate, gap: float, max_per_hour: int) -> tuple[Candidate | None, Decision]:
+        """Insere respeitando as regras de sobreposição, de forma atômica."""
+        now = to_iso(utcnow())
+        with self.db.transaction() as tx:
+            decision = decide(cand, self._existing(tx, cand.recording_id), gap, max_per_hour)
+            if not decision.accept:
+                return None, decision
+            self._discard(tx, decision.replace, now)
+            cur = tx.execute(
+                """INSERT INTO candidates (recording_id, streamer_id, start_offset, end_offset, peak_offset, score,
+                       audio_score, text_score, breakdown, status, transcript, language, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (cand.recording_id, cand.streamer_id, cand.start, cand.end, cand.peak, cand.score,
+                 cand.audio_score, cand.text_score, json.dumps(cand.breakdown), cand.status.value,
+                 _transcript_to_json(cand.transcript), cand.language, now, now),
+            )
+            new_id = cur.lastrowid
+        return self.get(new_id), decision
+
+    def update_selected(self, cand: Candidate, gap: float, max_per_hour: int) -> Decision:
+        """Atualiza após transcrição; se agora conflitar com um melhor, o candidato é descartado."""
+        now = to_iso(utcnow())
+        with self.db.transaction() as tx:
+            decision = decide(cand, self._existing(tx, cand.recording_id), gap, max_per_hour)
+            status = cand.status if decision.accept else CandidateStatus.DISCARDED
+            if decision.accept:
+                self._discard(tx, decision.replace, now)
+            tx.execute(
+                """UPDATE candidates SET start_offset=?, end_offset=?, peak_offset=?, score=?, audio_score=?,
+                       text_score=?, breakdown=?, status=?, transcript=?, language=?, updated_at=? WHERE id=?""",
+                (cand.start, cand.end, cand.peak, cand.score, cand.audio_score, cand.text_score,
+                 json.dumps(cand.breakdown), status.value, _transcript_to_json(cand.transcript),
+                 cand.language, now, cand.id),
+            )
+        return decision
+
+    def set_status(self, candidate_id: int, status: CandidateStatus) -> None:
+        with self.db.transaction() as tx:
+            tx.execute("UPDATE candidates SET status=?, updated_at=? WHERE id=?",
+                       (status.value, to_iso(utcnow()), candidate_id))
+
+    def get(self, candidate_id: int) -> Candidate | None:
+        row = self.db.query_one(f"{_CAND_SELECT} WHERE c.id = ?", (candidate_id,))
+        return _row_to_candidate(row) if row else None
+
+    def list(self, statuses: tuple[CandidateStatus, ...] | None = None, limit: int = 200) -> list[Candidate]:
+        sql, params = _CAND_SELECT, []
+        if statuses:
+            sql += f" WHERE c.status IN ({','.join('?' * len(statuses))})"
+            params = [s.value for s in statuses]
+        sql += " ORDER BY c.id DESC LIMIT ?"
+        return [_row_to_candidate(r) for r in self.db.query(sql, tuple(params) + (limit,))]
+
+    def for_recording(self, recording_id: int) -> list[Candidate]:
+        rows = self.db.query(f"{_CAND_SELECT} WHERE c.recording_id = ? ORDER BY c.start_offset", (recording_id,))
+        return [_row_to_candidate(r) for r in rows]
+
+    def counts(self) -> dict[CandidateStatus, int]:
+        rows = self.db.query("SELECT status, COUNT(*) AS n FROM candidates GROUP BY status")
+        return {CandidateStatus(r["status"]): r["n"] for r in rows}

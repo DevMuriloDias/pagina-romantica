@@ -103,8 +103,8 @@ class QueueView(BaseView):
             EmptyState(
                 self.list,
                 "Nenhuma tarefa aqui" if self.filter.get() != "Ativas" else "Fila vazia",
-                "Cada live detectada pelo monitoramento gera uma tarefa de captura quando o módulo de "
-                "captura estiver ativo. O progresso de cada etapa aparecerá nesta lista.",
+                "Quando um streamer autorizado entra ao vivo, a gravação começa automaticamente; cada "
+                "segmento gravado passa por análise de áudio e transcrição. Tudo aparece aqui.",
             ).grid(row=0, column=0, sticky="ew")
             return
         for i, job in enumerate(jobs):
@@ -149,7 +149,11 @@ class QueueView(BaseView):
         message.grid(row=1, column=1, sticky="w")
         progress = ProgressBar(card)
         pct = muted(card, "", font=(t.FONT_FAMILY, 11, "bold"))
-        if job.status is JobStatus.RUNNING:
+        if job.status is JobStatus.RUNNING and job.job_type.is_capture:
+            progress.configure(mode="indeterminate", progress_color=t.LIVE)
+            progress.grid(row=2, column=1, sticky="ew", pady=(6, 12))
+            progress.start()
+        elif job.status is JobStatus.RUNNING:
             progress.grid(row=2, column=1, sticky="ew", pady=(6, 12))
             pct.grid(row=2, column=2, sticky="w", padx=(10, 0), pady=(6, 12))
         else:
@@ -175,13 +179,14 @@ class QueueView(BaseView):
         if job.status is JobStatus.FAILED and job.error:
             text, color = f"Erro: {job.error}", t.DANGER
         elif job.status is JobStatus.QUEUED and not self.ctx.jobs.has_handler(job.job_type):
-            text, color = f"Aguardando o módulo de {job.job_type.label.lower()} (próxima fase)", t.TEXT_MUTED
+            text, color = f"{job.job_type.label} chega na próxima fase", t.TEXT_MUTED
         else:
             text, color = job.message or "", t.TEXT_MUTED
         when = job.finished_at or job.started_at or job.created_at
         suffix = f"  ·  {format_relative(when)}" if when else ""
         row["message"].configure(text=f"{text}{suffix}".strip(" ·"), text_color=color)
-        row["progress"].set(job.progress)
+        if not (job.job_type.is_capture and job.status is JobStatus.RUNNING):
+            row["progress"].set(job.progress)
         row["pct"].configure(text=f"{int(job.progress * 100)}%")
 
     # ------------------------------------------------------------ ações

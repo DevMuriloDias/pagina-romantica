@@ -130,7 +130,8 @@ class PageHeader(ctk.CTkFrame):
         label(self, title, font=t.FONT_TITLE).grid(row=0, column=0, sticky="w")
         if subtitle:
             muted(self, subtitle, font=t.FONT_BODY).grid(row=1, column=0, sticky="w", pady=(2, 0))
-        self.actions = ctk.CTkFrame(self, fg_color="transparent")
+        # width/height mínimos: sem botões, um CTkFrame vazio teria 200 px e esticaria o cabeçalho.
+        self.actions = ctk.CTkFrame(self, fg_color="transparent", width=1, height=1)
         self.actions.grid(row=0, column=1, rowspan=2, sticky="e")
 
 

@@ -108,3 +108,64 @@ MIGRATIONS.append(
         ],
     )
 )
+
+MIGRATIONS.append(
+    (
+        3,
+        [
+            # Fase 3 — captura e detecção
+            """
+            CREATE TABLE recordings (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                streamer_id        INTEGER NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+                stream_id          TEXT    NOT NULL,
+                job_id             INTEGER,
+                directory          TEXT    NOT NULL,
+                status             TEXT    NOT NULL DEFAULT 'recording',
+                quality            TEXT    NOT NULL DEFAULT '',
+                authorization_note TEXT    NOT NULL DEFAULT '',
+                started_at         TEXT    NOT NULL,
+                ended_at           TEXT,
+                bytes              INTEGER NOT NULL DEFAULT 0,
+                segment_count      INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            "CREATE INDEX idx_recordings_streamer ON recordings (streamer_id, id DESC)",
+            """
+            CREATE TABLE recording_segments (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                recording_id INTEGER NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
+                idx          INTEGER NOT NULL,
+                path         TEXT    NOT NULL,
+                start_offset REAL    NOT NULL,
+                duration     REAL    NOT NULL,
+                status       TEXT    NOT NULL DEFAULT 'pending',
+                bytes        INTEGER NOT NULL DEFAULT 0,
+                analyzed_at  TEXT,
+                UNIQUE (recording_id, idx)
+            )
+            """,
+            """
+            CREATE TABLE candidates (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                recording_id INTEGER NOT NULL REFERENCES recordings(id) ON DELETE CASCADE,
+                streamer_id  INTEGER NOT NULL REFERENCES streamers(id) ON DELETE CASCADE,
+                start_offset REAL    NOT NULL,
+                end_offset   REAL    NOT NULL,
+                peak_offset  REAL    NOT NULL,
+                score        REAL    NOT NULL,
+                audio_score  REAL    NOT NULL,
+                text_score   REAL,
+                breakdown    TEXT    NOT NULL DEFAULT '{}',
+                status       TEXT    NOT NULL DEFAULT 'detected',
+                transcript   TEXT    NOT NULL DEFAULT '[]',
+                language     TEXT,
+                created_at   TEXT    NOT NULL,
+                updated_at   TEXT    NOT NULL
+            )
+            """,
+            "CREATE INDEX idx_candidates_recording ON candidates (recording_id, start_offset)",
+            "CREATE INDEX idx_candidates_status ON candidates (status, score DESC)",
+        ],
+    )
+)

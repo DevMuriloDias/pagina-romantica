@@ -122,6 +122,13 @@ class StreamersView(BaseView):
         if not s.authorized:
             sw.configure(state="disabled")
         sw.pack(side="left", padx=(0, 12))
+        if s.is_live and s.authorized:
+            if self.ctx.capture.is_capturing(s.id):
+                GhostButton(actions, "■  Parar", lambda: self.app.stop_capture(s.id), danger=True,
+                            width=84).pack(side="left", padx=2)
+            elif not activity or not activity.job_type.is_capture:
+                GhostButton(actions, "●  Gravar", lambda: self.app.start_capture(s.id), width=84).pack(
+                    side="left", padx=2)
         GhostButton(actions, "↗", lambda: webbrowser.open(s.channel_url), width=38).pack(side="left", padx=2)
         GhostButton(actions, "Editar", lambda: StreamerDialog(self.app, s), width=70).pack(side="left", padx=2)
         GhostButton(actions, "Remover", lambda: self._remove(s), danger=True, width=80).pack(side="left", padx=2)

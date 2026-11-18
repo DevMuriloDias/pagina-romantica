@@ -13,6 +13,7 @@ from models.status import MonitorState, MonitorStatus, PipelineStatus
 from services.container import AppContext
 from ui.components.widgets import STATE_COLORS, Toast, label, muted
 from ui.views.dashboard import DashboardView
+from ui.views.moments import MomentsView
 from ui.views.placeholder import PlaceholderView
 from ui.views.queue import QueueView
 from ui.views.settings import SettingsView
@@ -25,6 +26,7 @@ log = logging.getLogger(__name__)
 NAV = [
     ("dashboard", "◉   Painel"),
     ("streamers", "◎   Streamers"),
+    ("moments", "★   Momentos"),
     ("queue", "≡   Fila e capturas"),
     ("library", "▣   Biblioteca"),
     ("settings", "⚙   Configurações"),
@@ -57,10 +59,11 @@ class ClipMonitorApp(ctk.CTk):
         self.views = {
             "dashboard": DashboardView(self.content, self),
             "streamers": StreamersView(self.content, self),
+            "moments": MomentsView(self.content, self),
             "queue": QueueView(self.content, self),
             "library": PlaceholderView(
                 self.content, self, "Biblioteca", "Seus clipes gerados, prontos para revisar e publicar.",
-                "Fase 4", "Clipes verticais 9:16 com legendas em português aparecerão aqui para aprovação.",
+                "Fase 4", "Os momentos aprovados viram clipes verticais 9:16 com legendas em português, listados aqui.",
             ),
             "settings": SettingsView(self.content, self),
         }
@@ -81,8 +84,12 @@ class ClipMonitorApp(ctk.CTk):
         self._tick_fast()
         self._tick_slow()
 
+        recovered = ctx.capture.recover()
+        if recovered:
+            ctx.activity_repo.add(f"{recovered} gravação(ões) interrompida(s) pelo fechamento do app.", "warn")
         ctx.jobs.start()
         self.refresh_tools()
+        self._maintenance()
         settings = ctx.settings_repo.load()
         if settings.start_monitoring_on_launch and settings.has_twitch_credentials():
             ctx.monitor.start()
@@ -313,7 +320,7 @@ class ClipMonitorApp(ctk.CTk):
     def _tick_fast(self) -> None:
         # Contagem regressiva da próxima verificação (sem IO).
         self._update_status_detail()
-        if self.current in ("dashboard", "streamers", "queue"):
+        if self.current in ("dashboard", "streamers", "queue", "moments"):
             self.views[self.current].tick()
         self.after(1000, self._tick_fast)
 
@@ -321,6 +328,26 @@ class ClipMonitorApp(ctk.CTk):
         # Atualiza textos relativos ("há 2 min") e indicadores sem consultar a Twitch.
         self.refresh_current()
         self.after(30_000, self._tick_slow)
+
+    def _maintenance(self) -> None:
+        """Retenção de gravações: a cada hora, em segundo plano."""
+        self.runner.submit(self.ctx.capture.purge_expired)
+        self.after(3_600_000, self._maintenance)
+
+    def start_capture(self, streamer_id: int) -> None:
+        try:
+            self.ctx.capture.enqueue(streamer_id)
+            self.toast("Gravação adicionada à fila.", "success")
+        except ValueError as exc:
+            self.toast(str(exc), "error")
+        except RuntimeError as exc:
+            self.toast(str(exc), "error")
+        self.refresh_current()
+
+    def stop_capture(self, streamer_id: int) -> None:
+        if self.ctx.capture.request_stop(streamer_id):
+            self.toast("Encerrando gravação… os segmentos gravados serão analisados.", "info")
+        self.refresh_current()
 
     def _on_close(self) -> None:
         log.info("Encerrando aplicação")
